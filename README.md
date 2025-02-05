@@ -20,6 +20,18 @@
 
 VideoRAG introduces a novel dual-channel architecture that synergistically combines graph-driven textual knowledge grounding for modeling cross-video semantic relationships with hierarchical multimodal context encoding to preserve spatiotemporal visual patterns, enabling unbounded-length video understanding through dynamically constructed knowledge graphs that maintain semantic coherence across multi-video contexts while optimizing retrieval efficiency via adaptive multimodal fusion mechanisms.
 
+💻 **Efficient Extreme Long-Context Video Processing**
+- Leveraging a Single NVIDIA RTX 3090 GPU (24G) to comprehend Hundreds of Hours of video content 💪
+
+🗃️ **Structured Video Knowledge Indexing**
+- Multi-Modal Knowledge Indexing Framework distills hundreds of hours of video into a concise, structured knowledge graph 🗂️
+
+🔍 **Multi-Modal Retrieval for Comprehensive Responses**
+- Multi-Modal Retrieval Paradigm aligns textual semantics and visual content to identify the most relevant video for comprehensive responses 💬
+
+📚 **The New Established LongerVideos Benchmark**
+- The new established LongerVideos Benchmark features over 160 Videos totaling 134+ Hours across lectures, documentaries, and entertainment 🎬
+
 ## Installation
 
 To utilize VideoRAG, please first create a conda environment with the following commands:
@@ -208,8 +220,19 @@ python batch_winrate_quant_download.py
 python batch_winrate_quant_calculate.py
 ```
 
+## 🌟 Citation
+If you find this work is helpful to your research, please consider citing our paper:
+```bibtex
+@article{VideoRAG,
+  title={VideoRAG: Retrieval-Augmented Generation with Extreme Long-Context Videos},
+  author={Ren, Xubin, Xu, Lingrui, Wang, Shuaiqiang, Yin, Dawei and Huang, Chao},
+  journal={arXiv preprint arXiv:2502.01549},
+  year={2025}
+}
+```
+
+**Thank you for your interest in our work!**
+
 ### Acknowledgement
 You may refer to related work that serves as foundations for our framework and code repository, 
 [nano-graphrag](https://github.com/gusye1234/nano-graphrag) and [LightRAG](https://github.com/HKUDS/LightRAG). Thanks for their wonderful works.
-
-**Thank you for your interest in our work!**
