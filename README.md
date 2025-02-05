@@ -220,7 +220,7 @@ python batch_winrate_quant_download.py
 python batch_winrate_quant_calculate.py
 ```
 
-## 🌟 Citation
+## Citation
 If you find this work is helpful to your research, please consider citing our paper:
 ```bibtex
 @article{VideoRAG,
