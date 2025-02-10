@@ -46,7 +46,7 @@ pip install bitsandbytes==0.43.1
 pip install moviepy==1.0.3
 pip install git+https://github.com/facebookresearch/pytorchvideo.git@28fe037d212663c6a24f373b94cc5d478c8c1a1d
 pip install timm==0.6.7 ftfy regex einops fvcore eva-decord==0.6.1 iopath matplotlib types-regex cartopy
-pip install ctranslate2==4.4.0 faster_whisper neo4j hnswlib xxhash nano-vectordb
+pip install ctranslate2==4.4.0 faster_whisper==1.0.3 neo4j hnswlib xxhash nano-vectordb
 pip install transformers==4.37.1
 pip install tiktoken openai tenacity
 
