@@ -19,6 +19,8 @@ from ._llm import (
     azure_gpt_4o_complete,
     azure_openai_embedding,
     azure_gpt_4o_mini_complete,
+    ollama_complete,
+    ollama_embedding
 )
 from ._op import (
     chunking_by_video_segments,
@@ -98,21 +100,60 @@ class VideoRAG:
     entity_extract_max_gleaning: int = 1
     entity_summary_to_max_tokens: int = 500
 
-    # text embedding
-    embedding_func: EmbeddingFunc = field(default_factory=lambda: openai_embedding)
-    embedding_batch_num: int = 32
-    embedding_func_max_async: int = 16
-    query_better_than_threshold: float = 0.2
+    # Uncomment as appropriate depending on whether you use openai, azure_openai or ollama
 
-    # LLM
-    using_azure_openai: bool = False
-    best_model_func: callable = gpt_4o_mini_complete
-    best_model_max_token_size: int = 32768
-    best_model_max_async: int = 16
-    cheap_model_func: callable = gpt_4o_mini_complete
-    cheap_model_max_token_size: int = 32768
-    cheap_model_max_async: int = 16
+    # Change to your LLM provider
+    llm_provider = "ollama"
+    if llm_provider == "openai":
+        # text embedding
+        embedding_func: EmbeddingFunc = field(default_factory=lambda: openai_embedding)
+        embedding_batch_num: int = 32
+        embedding_func_max_async: int = 16
+        query_better_than_threshold: float = 0.2
 
+        # LLM        
+        best_model_func: callable = gpt_4o_mini_complete
+        best_model_max_token_size: int = 32768
+        best_model_max_async: int = 16
+        
+        cheap_model_func: callable = gpt_4o_mini_complete
+        cheap_model_max_token_size: int = 32768
+        cheap_model_max_async: int = 16
+    if llm_provider == "azur_openai":
+        # text embedding
+        embedding_func = : EmbeddingFunc = field(default_factory=lambda: azure_openai_embedding)        
+        embedding_batch_num: int = 32
+        embedding_func_max_async: int = 16
+        query_better_than_threshold: float = 0.2
+
+        # LLM        
+        best_model_func: callable = azure_gpt_4o_complete
+        best_model_max_token_size: int = 32768
+        best_model_max_async: int = 16
+
+        cheap_model_func: callable = azure_gpt_4o_mini_complete
+        cheap_model_max_token_size: int = 32768
+        cheap_model_max_async: int = 16
+
+    if llm_provider == "ollama":
+        # text embedding
+        embedding_func: EmbeddingFunc = field(default_factory=lambda: ollama_embedding)
+        embedding_batch_num: int = 32
+        embedding_func_max_async: int = 1
+        query_better_than_threshold: float = 0.2
+
+        # LLM
+        best_model_func: callable = ollama_complete    
+        best_model_max_token_size: int = 32768
+        best_model_max_async: int = 1
+
+        cheap_model_func: callable = ollama_mini_complete    
+        cheap_model_max_token_size: int = 32768
+        cheap_model_max_async: int = 1
+
+
+
+    
     # entity extraction
     entity_extraction_func: callable = extract_entities
     
@@ -143,18 +184,6 @@ class VideoRAG:
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in asdict(self).items()])
         logger.debug(f"VideoRAG init with param:\n\n  {_print_config}\n")
         
-        if self.using_azure_openai:
-            # If there's no OpenAI API key, use Azure OpenAI
-            if self.best_model_func == gpt_4o_complete:
-                self.best_model_func = azure_gpt_4o_complete
-            if self.cheap_model_func == gpt_4o_mini_complete:
-                self.cheap_model_func = azure_gpt_4o_mini_complete
-            if self.embedding_func == openai_embedding:
-                self.embedding_func = azure_openai_embedding
-            logger.info(
-                "Switched the default openai funcs to Azure OpenAI if you didn't set any of it"
-            )
-
         if not os.path.exists(self.working_dir) and self.always_create_working_dir:
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)

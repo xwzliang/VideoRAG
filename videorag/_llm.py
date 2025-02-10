@@ -15,7 +15,7 @@ from .base import BaseKVStorage
 
 global_openai_async_client = None
 global_azure_openai_async_client = None
-
+global_ollama_client = None
 
 def get_openai_async_client_instance():
     global global_openai_async_client
@@ -30,6 +30,12 @@ def get_azure_openai_async_client_instance():
         global_azure_openai_async_client = AsyncAzureOpenAI()
     return global_azure_openai_async_client
 
+def get_ollama_async_client_instance():
+    global global_ollama_client
+    if global_ollama_client is None:
+        #global_ollama_client = Client(base_url="http://localhost:11434")  # Adjust base URL if necessary
+        global_ollama_client = Client(base_url="http://10.0.1.12:11434")  # Adjust base URL if necessary        
+    return global_ollama_client
 
 @retry(
     stop=stop_after_attempt(5),
@@ -164,6 +170,7 @@ async def azure_gpt_4o_mini_complete(
     )
 
 
+
 @wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(3),
@@ -176,3 +183,73 @@ async def azure_openai_embedding(texts: list[str]) -> np.ndarray:
         model="text-embedding-3-small", input=texts, encoding_format="float"
     )
     return np.array([dp.embedding for dp in response.data])
+
+async def ollama_complete_if_cache(
+    model, prompt, system_prompt=None, history_messages=[], **kwargs
+) -> str:
+    # Initialize the Ollama client
+    ollama_client = get_ollama_async_client_instance()
+
+    hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
+    messages = []
+    
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.extend(history_messages)
+    messages.append({"role": "user", "content": prompt})
+
+    if hashing_kv is not None:
+        args_hash = compute_args_hash(model, messages)
+        if_cache_return = await hashing_kv.get_by_id(args_hash)
+        if if_cache_return is not None:
+            return if_cache_return["return"]
+
+    # Send the request to Ollama
+    response = await ollama_client.chat(
+        model=model,
+        messages=messages,
+        **kwargs
+    )
+
+    if hashing_kv is not None:
+        await hashing_kv.upsert(
+            {args_hash: {"return": response.response, "model": model}}
+        )
+        await hashing_kv.index_done_callback()
+
+    return response.response
+
+
+async def ollama_complete(prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+    return await ollama_complete_if_cache(
+        "deepseek-r1:32b",  # For now select your model
+        prompt,
+        system_prompt=system_prompt,
+        history_messages=history_messages,
+        **kwargs,
+    )
+
+async def ollama_mini_complete(prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+    return await ollama_complete_if_cache(
+        "deepseek-r1:latest",  # For now select your model
+        prompt,
+        system_prompt=system_prompt,
+        history_messages=history_messages,
+        **kwargs,
+    )
+
+async def ollama_embedding(texts: list[str]) -> np.ndarray:
+    # Initialize the Ollama client
+    ollama_client = get_ollama_async_client_instance()
+
+    # Send the request to Ollama for embeddings
+    response = await ollama_client.embeddings(
+        model="nomic-embed-text",  # Replace with the appropriate Ollama embedding model
+        input=texts,
+        encoding_format="float"
+    )
+
+    # Extract embeddings from the response
+    embeddings = [dp.embedding for dp in response.data]
+
+    return np.array(embeddings)
