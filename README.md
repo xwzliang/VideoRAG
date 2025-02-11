@@ -73,6 +73,22 @@ wget https://dl.fbaipublicfiles.com/imagebind/imagebind_huge.pth
 cd ../
 ```
 
+Your final directory structure after downloading all checkpoints should look like this:
+```shell
+VideoRAG
+├── .checkpoints
+├── faster-distil-whisper-large-v3
+├── ImageBind
+├── LICENSE
+├── longervideos
+├── MiniCPM-V-2_6-int4
+├── README.md
+├── reproduce
+├── videorag
+├── VideoRAG_cover.png
+└── VideoRAG.png
+```
+
 ## Quick Start
 
 VideoRAG is capable of extracting knowledge from multiple videos and answering queries based on those videos. Now, try VideoRAG with your own videos 🤗.
