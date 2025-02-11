@@ -225,7 +225,7 @@ If you find this work is helpful to your research, please consider citing our pa
 ```bibtex
 @article{VideoRAG,
   title={VideoRAG: Retrieval-Augmented Generation with Extreme Long-Context Videos},
-  author={Ren, Xubin, Xu, Lingrui, Xia, Long, Wang, Shuaiqiang, Yin, Dawei and Huang, Chao},
+  author={Ren, Xubin and Xu, Lingrui and Xia, Long and Wang, Shuaiqiang and Yin, Dawei and Huang, Chao},
   journal={arXiv preprint arXiv:2502.01549},
   year={2025}
 }
