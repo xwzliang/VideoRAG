@@ -1,6 +1,7 @@
 import numpy as np
 
 from openai import AsyncOpenAI, AsyncAzureOpenAI, APIConnectionError, RateLimitError
+from ollama import AsyncClient
 
 from tenacity import (
     retry,
@@ -33,8 +34,8 @@ def get_azure_openai_async_client_instance():
 def get_ollama_async_client_instance():
     global global_ollama_client
     if global_ollama_client is None:
-        #global_ollama_client = Client(base_url="http://localhost:11434")  # Adjust base URL if necessary
-        global_ollama_client = Client(base_url="http://10.0.1.12:11434")  # Adjust base URL if necessary        
+        #global_ollama_client = AsyncClient(host="http://localhost:11434")  # Adjust base URL if necessary
+        global_ollama_client = AsyncClient(host="http://10.0.1.12:11434")  # Adjust base URL if necessary        
     return global_ollama_client
 
 @retry(
@@ -238,18 +239,23 @@ async def ollama_mini_complete(prompt, system_prompt=None, history_messages=[], 
         **kwargs,
     )
 
+@wrap_embedding_func_with_attrs(embedding_dim=768, max_token_size=8192)
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
+)
 async def ollama_embedding(texts: list[str]) -> np.ndarray:
     # Initialize the Ollama client
     ollama_client = get_ollama_async_client_instance()
 
     # Send the request to Ollama for embeddings
-    response = await ollama_client.embeddings(
+    response = await ollama_client.embed(
         model="nomic-embed-text",  # Replace with the appropriate Ollama embedding model
-        input=texts,
-        encoding_format="float"
+        input=texts
     )
 
     # Extract embeddings from the response
-    embeddings = [dp.embedding for dp in response.data]
+    embeddings = response['embeddings']
 
     return np.array(embeddings)

@@ -20,6 +20,7 @@ from ._llm import (
     azure_openai_embedding,
     azure_gpt_4o_mini_complete,
     ollama_complete,
+    ollama_mini_complete,    
     ollama_embedding
 )
 from ._op import (
@@ -121,7 +122,7 @@ class VideoRAG:
         cheap_model_max_async: int = 16
     if llm_provider == "azur_openai":
         # text embedding
-        embedding_func = : EmbeddingFunc = field(default_factory=lambda: azure_openai_embedding)        
+        embedding_func: EmbeddingFunc = field(default_factory=lambda: azure_openai_embedding)        
         embedding_batch_num: int = 32
         embedding_func_max_async: int = 16
         query_better_than_threshold: float = 0.2
@@ -138,7 +139,7 @@ class VideoRAG:
     if llm_provider == "ollama":
         # text embedding
         embedding_func: EmbeddingFunc = field(default_factory=lambda: ollama_embedding)
-        embedding_batch_num: int = 32
+        embedding_batch_num: int = 1
         embedding_func_max_async: int = 1
         query_better_than_threshold: float = 0.2
 
