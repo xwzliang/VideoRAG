@@ -57,11 +57,14 @@ pip install .
 
 Then, please download the necessary checkpoints in **the repository's root folder** for MiniCPM-V, Whisper, and ImageBind as follows:
 ```bash
+# Make sure you have git-lfs installed (https://git-lfs.com)
+git lfs install
+
 # minicpm-v
-git clone https://huggingface.co/openbmb/MiniCPM-V-2_6-int4
+git lfs clone https://huggingface.co/openbmb/MiniCPM-V-2_6-int4
 
 # whisper
-git clone https://huggingface.co/Systran/faster-distil-whisper-large-v3
+git lfs clone https://huggingface.co/Systran/faster-distil-whisper-large-v3
 
 # imagebind
 mkdir .checkpoints
