@@ -1,5 +1,9 @@
 # VideoRAG: Retrieval-Augmented Generation with Extreme Long-Context Videos
 
+<a href='https://arxiv.org/abs/2502.01549'><img src='https://img.shields.io/badge/arXiv-2502.01549-b31b1b'></a>
+<a href='https://github.com/HKUDS/VideoRAG/issues/1'><img src='https://img.shields.io/badge/群聊-wechat-green'></a>
+
+
 <img src='VideoRAG_cover.png' />
 
  This is the PyTorch implementation for VideoRAG proposed in this paper:
