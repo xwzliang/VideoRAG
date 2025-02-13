@@ -411,9 +411,12 @@ async def extract_entities(
         maybe_edges = defaultdict(list)
         for record in records:
             record = re.search(r"\((.*)\)", record)
+            print('+++++++')
+            print(record)
             if record is None:
                 continue
             record = record.group(1)
+            print(record)            
             record_attributes = split_string_by_multi_markers(
                 record, [context_base["tuple_delimiter"]]
             )
