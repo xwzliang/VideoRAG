@@ -13,15 +13,10 @@ import tiktoken
 
 
 from ._llm import (
-    gpt_4o_complete,
-    gpt_4o_mini_complete,
-    openai_embedding,
-    azure_gpt_4o_complete,
-    azure_openai_embedding,
-    azure_gpt_4o_mini_complete,
-    ollama_complete,
-    ollama_mini_complete,    
-    ollama_embedding
+    LLMConfig
+    openai_config,
+    azure_openai_config,
+    ollama_config
 )
 from ._op import (
     chunking_by_video_segments,
@@ -104,56 +99,7 @@ class VideoRAG:
     # Uncomment as appropriate depending on whether you use openai, azure_openai or ollama
 
     # Change to your LLM provider
-    llm_provider = "ollama"
-    if llm_provider == "openai":
-        # text embedding
-        embedding_func: EmbeddingFunc = field(default_factory=lambda: openai_embedding)
-        embedding_batch_num: int = 32
-        embedding_func_max_async: int = 16
-        query_better_than_threshold: float = 0.2
-
-        # LLM        
-        best_model_func: callable = gpt_4o_mini_complete
-        best_model_max_token_size: int = 32768
-        best_model_max_async: int = 16
-        
-        cheap_model_func: callable = gpt_4o_mini_complete
-        cheap_model_max_token_size: int = 32768
-        cheap_model_max_async: int = 16
-    if llm_provider == "azur_openai":
-        # text embedding
-        embedding_func: EmbeddingFunc = field(default_factory=lambda: azure_openai_embedding)        
-        embedding_batch_num: int = 32
-        embedding_func_max_async: int = 16
-        query_better_than_threshold: float = 0.2
-
-        # LLM        
-        best_model_func: callable = azure_gpt_4o_complete
-        best_model_max_token_size: int = 32768
-        best_model_max_async: int = 16
-
-        cheap_model_func: callable = azure_gpt_4o_mini_complete
-        cheap_model_max_token_size: int = 32768
-        cheap_model_max_async: int = 16
-
-    if llm_provider == "ollama":
-        # text embedding
-        embedding_func: EmbeddingFunc = field(default_factory=lambda: ollama_embedding)
-        embedding_batch_num: int = 1
-        embedding_func_max_async: int = 1
-        query_better_than_threshold: float = 0.2
-
-        # LLM
-        best_model_func: callable = ollama_complete    
-        best_model_max_token_size: int = 32768
-        best_model_max_async: int = 1
-
-        cheap_model_func: callable = ollama_mini_complete    
-        cheap_model_max_token_size: int = 32768
-        cheap_model_max_async: int = 1
-
-
-
+    llm: LLMConfig = ollama_config
     
     # entity extraction
     entity_extraction_func: callable = extract_entities
@@ -213,8 +159,8 @@ class VideoRAG:
             namespace="chunk_entity_relation", global_config=asdict(self)
         )
 
-        self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(
-            self.embedding_func
+        self.embedding_func = limit_async_func_call(self.llm.embedding_func_max_async)(
+            self.llm.embedding_func
         )
         self.entities_vdb = (
             self.vector_db_storage_cls(
@@ -244,11 +190,11 @@ class VideoRAG:
             )
         )
         
-        self.best_model_func = limit_async_func_call(self.best_model_max_async)(
-            partial(self.best_model_func, hashing_kv=self.llm_response_cache)
+        self.best_model_func = limit_async_func_call(self.llm.best_model_max_async)(
+            partial(self.llm.best_model_func, hashing_kv=self.llm_response_cache)
         )
-        self.cheap_model_func = limit_async_func_call(self.cheap_model_max_async)(
-            partial(self.cheap_model_func, hashing_kv=self.llm_response_cache)
+        self.cheap_model_func = limit_async_func_call(self.llm.cheap_model_max_async)(
+            partial(self.llm.cheap_model_func, hashing_kv=self.llm_response_cache)
         )
 
     def insert_video(self, video_path_list=None):

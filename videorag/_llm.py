@@ -43,6 +43,26 @@ def get_ollama_async_client_instance():
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
+
+# Setup LLM Configuration.
+@dataclass
+class LLMConfig:
+    embedding_func: EmbeddingFunc
+    embedding_batch_num: int 
+    embedding_func_max_async: int 
+    query_better_than_threshold: float
+    
+    best_model_func: callable 
+    best_model_max_token_size: int
+    best_model_max_async: int
+    
+    cheap_model_func: callable
+    cheap_model_max_token_size: int
+    cheap_model_max_async: int
+
+##### OpenAI Configuration
+
+    
 async def openai_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
@@ -109,6 +129,22 @@ async def openai_embedding(texts: list[str]) -> np.ndarray:
     return np.array([dp.embedding for dp in response.data])
 
 
+openai_config = LLMConfig(
+    embedding_func = field(default_factory=lambda: openai_embedding)
+    embedding_batch_num = 32
+    embedding_func_max_async = 16
+    query_better_than_threshold = 0.2
+
+    # LLM        
+    best_model_func = gpt_4o_mini_complete
+    best_model_max_token_size = 32768
+    best_model_max_async = 16
+        
+    cheap_model_func = gpt_4o_mini_complete
+    cheap_model_max_token_size = 32768
+    cheap_model_max_async = 16
+
+###### Azure OpenAI Configuration
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -184,6 +220,24 @@ async def azure_openai_embedding(texts: list[str]) -> np.ndarray:
         model="text-embedding-3-small", input=texts, encoding_format="float"
     )
     return np.array([dp.embedding for dp in response.data])
+
+
+azure_openai_config = LLMConfig(
+    embedding_func = field(default_factory=lambda: azure_openai_embedding),
+    embedding_batch_num = 32
+    embedding_func_max_async = 16
+    query_better_than_threshold = 0.2
+
+    best_model_func: callable = azure_gpt_4o_complete
+    best_model_max_token_size = 32768
+    best_model_max_async = 16
+
+    cheap_model_func: callable = azure_gpt_4o_mini_complete
+    cheap_model_max_token_size = 32768
+    cheap_model_max_async = 16
+
+
+######  Ollama configuration
 
 async def ollama_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
@@ -261,3 +315,15 @@ async def ollama_embedding(texts: list[str]) -> np.ndarray:
     embeddings = response['embeddings']
 
     return np.array(embeddings)
+
+ollama_config = LLMConfig(
+    embedding_func= EmbeddingFunc = field(default_factory=lambda: ollama_embedding),
+    embedding_batch_num = 1,
+    embedding_func_max_async = 1,
+    query_better_than_threshold = 0.2,
+    best_model_func = ollama_complete ,   
+    best_model_max_token_size: int = 32768,
+    best_model_max_async  = 1,
+    cheap_model_func = ollama_mini_complete,
+    cheap_model_max_token_size = 32768,
+    cheap_model_max_async = 1)
