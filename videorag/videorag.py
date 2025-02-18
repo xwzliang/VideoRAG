@@ -13,7 +13,7 @@ import tiktoken
 
 
 from ._llm import (
-    LLMConfig
+    LLMConfig,
     openai_config,
     azure_openai_config,
     ollama_config
@@ -96,10 +96,8 @@ class VideoRAG:
     entity_extract_max_gleaning: int = 1
     entity_summary_to_max_tokens: int = 500
 
-    # Uncomment as appropriate depending on whether you use openai, azure_openai or ollama
-
     # Change to your LLM provider
-    llm: LLMConfig = ollama_config
+    llm: LLMConfig = field(default_factory=openai_config)
     
     # entity extraction
     entity_extraction_func: callable = extract_entities

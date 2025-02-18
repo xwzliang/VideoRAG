@@ -21,7 +21,7 @@ sub_category = args.collection
 os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
 os.environ["OPENAI_API_KEY"] = ""
 
-from videorag._llm import *
+from videorag._llm import openai_config, azure_openai_config, ollama_config
 from videorag.videorag import VideoRAG, QueryParam
 
 if __name__ == '__main__':
@@ -31,8 +31,7 @@ if __name__ == '__main__':
     video_base_path = f'longervideos/{sub_category}/videos/'
     video_files = sorted(os.listdir(video_base_path))
     video_paths = [os.path.join(video_base_path, f) for f in video_files]
-    #videorag = VideoRAG(cheap_model_func=gpt_4o_mini_complete, best_model_func=gpt_4o_mini_complete, working_dir=f"./videorag-workdir/{sub_category}")
-    videorag = VideoRAG(cheap_model_func=ollama_mini_complete, best_model_func=ollama_complete, working_dir=f"./videorag-workdir/{sub_category}")    
+    videorag = VideoRAG(llm=ollama_config, working_dir=f"./videorag-workdir/{sub_category}")    
     videorag.insert_video(video_path_list=video_paths)
     
     ## inference
