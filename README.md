@@ -1,5 +1,10 @@
 # VideoRAG: Retrieval-Augmented Generation with Extreme Long-Context Videos
 
+<a href='https://arxiv.org/abs/2502.01549'><img src='https://img.shields.io/badge/arXiv-2502.01549-b31b1b'></a>
+<a href='https://github.com/HKUDS/VideoRAG/issues/1'><img src='https://img.shields.io/badge/群聊-wechat-green'></a>
+<a href='https://discord.gg/ZzU55kz3'><img src='https://discordapp.com/api/guilds/1296348098003734629/widget.png?style=shield'></a>
+
+
 <img src='VideoRAG_cover.png' />
 
  This is the PyTorch implementation for VideoRAG proposed in this paper:
@@ -45,8 +50,8 @@ pip install accelerate==0.30.1
 pip install bitsandbytes==0.43.1
 pip install moviepy==1.0.3
 pip install git+https://github.com/facebookresearch/pytorchvideo.git@28fe037d212663c6a24f373b94cc5d478c8c1a1d
-pip install timm==0.6.7 ftfy regex einops fvcore eva-decord==0.6.1 iopath matplotlib types-regex cartopy
-pip install ctranslate2==4.4.0 faster_whisper neo4j hnswlib xxhash nano-vectordb
+pip install timm ftfy regex einops fvcore eva-decord==0.6.1 iopath matplotlib types-regex cartopy
+pip install ctranslate2==4.4.0 faster_whisper==1.0.3 neo4j hnswlib xxhash nano-vectordb
 pip install transformers==4.37.1
 pip install tiktoken openai tenacity
 
@@ -57,17 +62,36 @@ pip install .
 
 Then, please download the necessary checkpoints in **the repository's root folder** for MiniCPM-V, Whisper, and ImageBind as follows:
 ```bash
+# Make sure you have git-lfs installed (https://git-lfs.com)
+git lfs install
+
 # minicpm-v
-git clone https://huggingface.co/openbmb/MiniCPM-V-2_6-int4
+git lfs clone https://huggingface.co/openbmb/MiniCPM-V-2_6-int4
 
 # whisper
-git clone https://huggingface.co/Systran/faster-distil-whisper-large-v3
+git lfs clone https://huggingface.co/Systran/faster-distil-whisper-large-v3
 
 # imagebind
 mkdir .checkpoints
 cd .checkpoints
 wget https://dl.fbaipublicfiles.com/imagebind/imagebind_huge.pth
 cd ../
+```
+
+Your final directory structure after downloading all checkpoints should look like this:
+```shell
+VideoRAG
+├── .checkpoints
+├── faster-distil-whisper-large-v3
+├── ImageBind
+├── LICENSE
+├── longervideos
+├── MiniCPM-V-2_6-int4
+├── README.md
+├── reproduce
+├── videorag
+├── VideoRAG_cover.png
+└── VideoRAG.png
 ```
 
 ## Quick Start
@@ -225,7 +249,7 @@ If you find this work is helpful to your research, please consider citing our pa
 ```bibtex
 @article{VideoRAG,
   title={VideoRAG: Retrieval-Augmented Generation with Extreme Long-Context Videos},
-  author={Ren, Xubin, Xu, Lingrui, Wang, Shuaiqiang, Yin, Dawei and Huang, Chao},
+  author={Ren, Xubin and Xu, Lingrui and Xia, Long and Wang, Shuaiqiang and Yin, Dawei and Huang, Chao},
   journal={arXiv preprint arXiv:2502.01549},
   year={2025}
 }
