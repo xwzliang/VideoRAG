@@ -183,8 +183,8 @@ async def _handle_entity_relation_summary(
     description: str,
     global_config: dict,
 ) -> str:
-    use_llm_func: callable = global_config["cheap_model_func"]
-    llm_max_tokens = global_config["cheap_model_max_token_size"]
+    use_llm_func: callable = global_config["llm"]["cheap_model_func"]
+    llm_max_tokens = global_config["llm"]["cheap_model_max_token_size"]
     tiktoken_model_name = global_config["tiktoken_model_name"]
     summary_max_tokens = global_config["entity_summary_to_max_tokens"]
 
@@ -359,7 +359,7 @@ async def extract_entities(
     entity_vdb: BaseVectorStorage,
     global_config: dict,
 ) -> Union[BaseGraphStorage, None]:
-    use_llm_func: callable = global_config["best_model_func"]
+    use_llm_func: callable = global_config["llm"]["best_model_func"]
     entity_extract_max_gleaning = global_config["entity_extract_max_gleaning"]
     
     ordered_chunks = list(chunks.items())

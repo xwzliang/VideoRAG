@@ -38,8 +38,7 @@ if __name__ == '__main__':
     with open(f'longervideos/dataset.json', 'r') as f:
         longervideos = json.load(f)
     
-    #videorag = VideoRAG(cheap_model_func=gpt_4o_mini_complete, best_model_func=gpt_4o_mini_complete, working_dir=f"./videorag-workdir/{sub_category}")
-    videorag = VideoRAG(cheap_model_func=ollama_mini_complete, best_model_func=ollama_complete, working_dir=f"./videorag-workdir/{sub_category}")        
+    videorag = VideoRAG(llm=ollama_config, working_dir=f"./videorag-workdir/{sub_category}")        
     videorag.load_caption_model(debug=False)
     
     answer_folder = f'./videorag-answers/{sub_category}'
