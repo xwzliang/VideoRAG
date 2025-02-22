@@ -49,18 +49,44 @@ def get_ollama_async_client_instance():
 # Setup LLM Configuration.
 @dataclass
 class LLMConfig:
-    embedding_func: EmbeddingFunc
-    embedding_batch_num: int 
+    # To be set
+    embedding_func_raw: callable
+    embedding_model_name: str
+    embedding_dim: int
+    embedding_max_token_size: int
+    embedding_batch_num: int    
     embedding_func_max_async: int 
     query_better_than_threshold: float
     
-    best_model_func: callable 
+    best_model_func_raw: callable
+    best_model_name: str    
     best_model_max_token_size: int
     best_model_max_async: int
     
-    cheap_model_func: callable
+    cheap_model_func_raw: callable
+    cheap_model_name: str
     cheap_model_max_token_size: int
     cheap_model_max_async: int
+
+    # Assigned in post init
+    embedding_func: EmbeddingFunc  = None    
+    best_model_func: callable = None    
+    cheap_model_func: callable = None
+    
+
+    def __post_init__(self):
+        embedding_wrapper = wrap_embedding_func_with_attrs(
+            embedding_dim = self.embedding_dim,
+            max_token_size = self.embedding_max_token_size,
+            model_name = self.embedding_model_name)
+        self.embedding_func = embedding_wrapper(self.embedding_func_raw)
+        self.best_model_func = lambda prompt, *args, **kwargs: self.best_model_func_raw(
+            self.best_model_name, prompt, *args, **kwargs
+        )
+
+        self.cheap_model_func = lambda prompt, *args, **kwargs: self.cheap_model_func_raw(
+            self.cheap_model_name, prompt, *args, **kwargs
+        )
 
 ##### OpenAI Configuration
 
@@ -94,10 +120,10 @@ async def openai_complete_if_cache(
 
 
 async def gpt_4o_complete(
-    prompt, system_prompt=None, history_messages=[], **kwargs
+        model_name, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await openai_complete_if_cache(
-        "gpt-4o",
+        model_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -106,10 +132,10 @@ async def gpt_4o_complete(
 
 
 async def gpt_4o_mini_complete(
-    prompt, system_prompt=None, history_messages=[], **kwargs
+        model_name, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await openai_complete_if_cache(
-        "gpt-4o-mini",
+        model_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -117,32 +143,36 @@ async def gpt_4o_mini_complete(
     )
 
 
-@wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
-async def openai_embedding(texts: list[str]) -> np.ndarray:
+async def openai_embedding(model_name: str, texts: list[str]) -> np.ndarray:
     openai_async_client = get_openai_async_client_instance()
     response = await openai_async_client.embeddings.create(
-        model="text-embedding-3-small", input=texts, encoding_format="float"
+        model=model_name, input=texts, encoding_format="float"
     )
     return np.array([dp.embedding for dp in response.data])
 
 
 openai_config = LLMConfig(
-    embedding_func = openai_embedding,
+    embedding_func_raw = openai_embedding,
+    embedding_model_name = "text-embedding-3-small",
+    embedding_dim = 1536,
+    embedding_max_token_size  = 8192,
     embedding_batch_num = 32,
     embedding_func_max_async = 16,
     query_better_than_threshold = 0.2,
 
     # LLM        
-    best_model_func = gpt_4o_mini_complete,
+    best_model_func_raw = gpt_4o_mini_complete,
+    best_model_name = "gpt-4o",    
     best_model_max_token_size = 32768,
     best_model_max_async = 16,
         
-    cheap_model_func = gpt_4o_mini_complete,
+    cheap_model_func_raw = gpt_4o_mini_complete,
+    cheap_model_name = "gpt-4o-mini",
     cheap_model_max_token_size = 32768,
     cheap_model_max_async = 16)
 
@@ -186,10 +216,10 @@ async def azure_openai_complete_if_cache(
 
 
 async def azure_gpt_4o_complete(
-    prompt, system_prompt=None, history_messages=[], **kwargs
+        model_name, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await azure_openai_complete_if_cache(
-        "gpt-4o",
+        model_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -198,10 +228,10 @@ async def azure_gpt_4o_complete(
 
 
 async def azure_gpt_4o_mini_complete(
-    prompt, system_prompt=None, history_messages=[], **kwargs
+        model_name, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
     return await azure_openai_complete_if_cache(
-        "gpt-4o-mini",
+        model_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -210,31 +240,35 @@ async def azure_gpt_4o_mini_complete(
 
 
 
-@wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
-async def azure_openai_embedding(texts: list[str]) -> np.ndarray:
+async def azure_openai_embedding(model_name: str, texts: list[str]) -> np.ndarray:
     azure_openai_client = get_azure_openai_async_client_instance()
     response = await azure_openai_client.embeddings.create(
-        model="text-embedding-3-small", input=texts, encoding_format="float"
+        model=model_name, input=texts, encoding_format="float"
     )
     return np.array([dp.embedding for dp in response.data])
 
 
 azure_openai_config = LLMConfig(
-    embedding_func = azure_openai_embedding,
+    embedding_func_raw = azure_openai_embedding,
+    embedding_model_name = "text-embedding-3-small",
+    embedding_dim = 1536,
+    embedding_max_token_size = 8192,    
     embedding_batch_num = 32,
     embedding_func_max_async = 16,
     query_better_than_threshold = 0.2,
 
-    best_model_func = azure_gpt_4o_complete,
+    best_model_func_raw = azure_gpt_4o_complete,
+    best_model_name = "gpt-4o",    
     best_model_max_token_size = 32768,
     best_model_max_async = 16,
 
-    cheap_model_func  = azure_gpt_4o_mini_complete,
+    cheap_model_func_raw  = azure_gpt_4o_mini_complete,
+    cheap_model_name = "gpt-4o-mini",
     cheap_model_max_token_size = 32768,
     cheap_model_max_async = 16)
 
@@ -279,37 +313,35 @@ async def ollama_complete_if_cache(
     return response['message']['content']
 
 
-async def ollama_complete(prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+async def ollama_complete(model_name, prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
     return await ollama_complete_if_cache(
-        #"deepseek-r1:32b",  # For now select your model
-        "gemma2:latest",
+        model_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages
     )
 
-async def ollama_mini_complete(prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+async def ollama_mini_complete(model_name, prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
     return await ollama_complete_if_cache(
         # "deepseek-r1:latest",  # For now select your model
-        "olmo2",
+        model_name,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages
     )
 
-@wrap_embedding_func_with_attrs(embedding_dim=768, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
-async def ollama_embedding(texts: list[str]) -> np.ndarray:
+async def ollama_embedding(model_name: str, texts: list[str]) -> np.ndarray:
     # Initialize the Ollama client
     ollama_client = get_ollama_async_client_instance()
 
     # Send the request to Ollama for embeddings
     response = await ollama_client.embed(
-        model="nomic-embed-text",  # Replace with the appropriate Ollama embedding model
+        model=model_name,  
         input=texts
     )
 
@@ -319,13 +351,18 @@ async def ollama_embedding(texts: list[str]) -> np.ndarray:
     return np.array(embeddings)
 
 ollama_config = LLMConfig(
-    embedding_func = ollama_embedding,
+    embedding_func_raw = ollama_embedding,
+    embedding_model_name = "nomic-embed-text",
+    embedding_dim = 768,
+    embedding_max_token_size=8192,
     embedding_batch_num = 1,
     embedding_func_max_async = 1,
     query_better_than_threshold = 0.2,
-    best_model_func = ollama_complete ,   
+    best_model_func_raw = ollama_complete ,
+    best_model_name = "gemma2:latest", # need to be a solid instruct model
     best_model_max_token_size = 32768,
     best_model_max_async  = 1,
-    cheap_model_func = ollama_mini_complete,
+    cheap_model_func_raw = ollama_mini_complete,
+    cheap_model_name = "olmo2",
     cheap_model_max_token_size = 32768,
     cheap_model_max_async = 1)

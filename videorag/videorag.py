@@ -34,6 +34,7 @@ from ._utils import (
     EmbeddingFunc,
     compute_mdhash_id,
     limit_async_func_call,
+    wrap_embedding_func_with_attrs,
     convert_response_to_json,
     always_get_an_event_loop,
     logger,
@@ -157,9 +158,10 @@ class VideoRAG:
             namespace="chunk_entity_relation", global_config=asdict(self)
         )
 
-        self.embedding_func = limit_async_func_call(self.llm.embedding_func_max_async)(
-            self.llm.embedding_func
-        )
+        self.embedding_func = limit_async_func_call(self.llm.embedding_func_max_async)(wrap_embedding_func_with_attrs(
+                embedding_dim = self.llm.embedding_dim,
+                max_token_size = self.llm.embedding_max_token_size,
+                model_name = self.llm.embedding_model_name)(self.llm.embedding_func))
         self.entities_vdb = (
             self.vector_db_storage_cls(
                 namespace="entities",

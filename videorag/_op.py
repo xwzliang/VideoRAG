@@ -411,8 +411,6 @@ async def extract_entities(
         maybe_edges = defaultdict(list)
         for record in records:
             record = re.search(r"\((.*)\)", record)
-            print('+++++++')
-            print(record)
             if record is None:
                 continue
             record = record.group(1)
