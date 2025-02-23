@@ -36,8 +36,8 @@ def get_azure_openai_async_client_instance():
 def get_ollama_async_client_instance():
     global global_ollama_client
     if global_ollama_client is None:
-        # set OLLAMA_HOST
-        global_ollama_client = AsyncClient(host="http://10.0.1.12:11434")  # Adjust base URL if necessary        
+        # set OLLAMA_HOST or pass in host="http://127.0.0.1:11434"
+        global_ollama_client = AsyncClient()  # Adjust base URL if necessary        
     return global_ollama_client
 
 @retry(
