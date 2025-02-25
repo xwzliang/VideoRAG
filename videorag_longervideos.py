@@ -8,9 +8,6 @@ import sys
 warnings.filterwarnings("ignore")
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# Add the parent directory of 'videorag' to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import argparse
 parser = argparse.ArgumentParser(description="Set sub-category and CUDA device.")
 parser.add_argument('--collection', type=str, default='4-rag-lecture')
