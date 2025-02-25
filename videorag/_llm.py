@@ -40,12 +40,6 @@ def get_ollama_async_client_instance():
         global_ollama_client = AsyncClient()  # Adjust base URL if necessary        
     return global_ollama_client
 
-@retry(
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
-)
-
 # Setup LLM Configuration.
 @dataclass
 class LLMConfig:
@@ -89,6 +83,11 @@ class LLMConfig:
         )
 
 ##### OpenAI Configuration
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
+)
 async def openai_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
