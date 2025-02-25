@@ -188,7 +188,7 @@ sh download.sh # downloading videos
 Then, you can run the following example command to process and answer queries for LongerVideos with VideoRAG:
 
 ```shell
-# Please enter your openai_key in line 22 at first
+# Please enter your openai_key in line 19 at first
 python videorag_longervideos.py --collection 4-rag-lecture --cuda 0
 ```
 
