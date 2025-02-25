@@ -89,6 +89,7 @@ VideoRAG
 ├── MiniCPM-V-2_6-int4
 ├── README.md
 ├── reproduce
+├── notesbooks
 ├── videorag
 ├── VideoRAG_cover.png
 └── VideoRAG.png
