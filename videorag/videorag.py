@@ -74,6 +74,7 @@ class VideoRAG:
     
     # query
     retrieval_topk_chunks: int = 2
+    query_better_than_threshold: float = 0.2
     
     # graph mode
     enable_local: bool = True
