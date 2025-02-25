@@ -162,7 +162,7 @@ if __name__ == '__main__':
     print(response)
 ```
 
-## Evaluation
+## Experiments
 
 ### LongerVideos
 We constructed the LongerVideos benchmark to evaluate the model's performance in comprehending multiple long-context videos and answering open-ended queries. All the videos are open-access videos on YouTube, and we record the URLs of the collections of videos as well as the corresponding queries in the [JSON](longervideos/dataset.json) file.
@@ -244,7 +244,7 @@ python batch_winrate_quant_download.py
 python batch_winrate_quant_calculate.py
 ```
 
-### Ollama Support
+## Ollama Support
 
 This project also supports ollama.  To use, edit the ollama_config in [_llm.py](VideoRAG/videorag/_llm.py).
 Adjust the paramters of the models being used
