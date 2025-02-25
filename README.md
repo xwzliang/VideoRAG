@@ -100,7 +100,7 @@ VideoRAG
 VideoRAG is capable of extracting knowledge from multiple videos and answering queries based on those videos. Now, try VideoRAG with your own videos 🤗.
 
 > [!NOTE]
-> Currently, VideoRAG has only been tested in an English environment. To process videos in multiple languages, it is recommended to modify the  ```WhisperModel``` in [asr.py](VideoRAG/videorag/_videoutil/asr.py). For more details, please refer to [faster-whisper](https://github.com/systran/faster-whisper).
+> Currently, VideoRAG has only been tested in an English environment. To process videos in multiple languages, it is recommended to modify the  ```WhisperModel``` in [asr.py](https://github.com/HKUDS/VideoRAG/blob/main/videorag/_videoutil/asr.py). For more details, please refer to [faster-whisper](https://github.com/systran/faster-whisper).
 
 **At first**, let the VideoRAG extract and indexing the knowledge from given videos (Only one GPU with 24GB of memory is sufficient, such as the RTX 3090):
 ```python
@@ -166,7 +166,7 @@ if __name__ == '__main__':
 ## Experiments
 
 ### LongerVideos
-We constructed the LongerVideos benchmark to evaluate the model's performance in comprehending multiple long-context videos and answering open-ended queries. All the videos are open-access videos on YouTube, and we record the URLs of the collections of videos as well as the corresponding queries in the [JSON](longervideos/dataset.json) file.
+We constructed the LongerVideos benchmark to evaluate the model's performance in comprehending multiple long-context videos and answering open-ended queries. All the videos are open-access videos on YouTube, and we record the URLs of the collections of videos as well as the corresponding queries in the [JSON](https://github.com/HKUDS/VideoRAG/longervideos/dataset.json) file.
 
 | Video Type       | #video list | #video | #query | #avg. queries per list | #overall duration      |
 |------------------|------------:|-------:|-------:|-----------------------:|-------------------------|
@@ -247,7 +247,7 @@ python batch_winrate_quant_calculate.py
 
 ## Ollama Support
 
-This project also supports ollama.  To use, edit the ollama_config in [_llm.py](VideoRAG/videorag/_llm.py).
+This project also supports ollama.  To use, edit the ollama_config in [_llm.py](https://github.com/HKUDS/VideoRAG/blob/main/videorag/_llm.py).
 Adjust the paramters of the models being used
 
 ```
