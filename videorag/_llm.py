@@ -89,8 +89,6 @@ class LLMConfig:
         )
 
 ##### OpenAI Configuration
-
-    
 async def openai_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
@@ -130,7 +128,6 @@ async def gpt_4o_complete(
         **kwargs,
     )
 
-
 async def gpt_4o_mini_complete(
         model_name, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
@@ -141,7 +138,6 @@ async def gpt_4o_mini_complete(
         history_messages=history_messages,
         **kwargs,
     )
-
 
 @retry(
     stop=stop_after_attempt(5),
@@ -155,7 +151,6 @@ async def openai_embedding(model_name: str, texts: list[str]) -> np.ndarray:
     )
     return np.array([dp.embedding for dp in response.data])
 
-
 openai_config = LLMConfig(
     embedding_func_raw = openai_embedding,
     embedding_model_name = "text-embedding-3-small",
@@ -166,7 +161,7 @@ openai_config = LLMConfig(
     query_better_than_threshold = 0.2,
 
     # LLM        
-    best_model_func_raw = gpt_4o_mini_complete,
+    best_model_func_raw = gpt_4o_complete,
     best_model_name = "gpt-4o",    
     best_model_max_token_size = 32768,
     best_model_max_async = 16,
@@ -174,7 +169,29 @@ openai_config = LLMConfig(
     cheap_model_func_raw = gpt_4o_mini_complete,
     cheap_model_name = "gpt-4o-mini",
     cheap_model_max_token_size = 32768,
-    cheap_model_max_async = 16)
+    cheap_model_max_async = 16
+)
+
+openai_4o_mini_config = LLMConfig(
+    embedding_func_raw = openai_embedding,
+    embedding_model_name = "text-embedding-3-small",
+    embedding_dim = 1536,
+    embedding_max_token_size  = 8192,
+    embedding_batch_num = 32,
+    embedding_func_max_async = 16,
+    query_better_than_threshold = 0.2,
+
+    # LLM        
+    best_model_func_raw = gpt_4o_mini_complete,
+    best_model_name = "gpt-4o-mini",    
+    best_model_max_token_size = 32768,
+    best_model_max_async = 16,
+        
+    cheap_model_func_raw = gpt_4o_mini_complete,
+    cheap_model_name = "gpt-4o-mini",
+    cheap_model_max_token_size = 32768,
+    cheap_model_max_async = 16
+)
 
 ###### Azure OpenAI Configuration
 @retry(
@@ -270,7 +287,8 @@ azure_openai_config = LLMConfig(
     cheap_model_func_raw  = azure_gpt_4o_mini_complete,
     cheap_model_name = "gpt-4o-mini",
     cheap_model_max_token_size = 32768,
-    cheap_model_max_async = 16)
+    cheap_model_max_async = 16
+)
 
 
 ######  Ollama configuration
@@ -365,4 +383,5 @@ ollama_config = LLMConfig(
     cheap_model_func_raw = ollama_mini_complete,
     cheap_model_name = "olmo2",
     cheap_model_max_token_size = 32768,
-    cheap_model_max_async = 1)
+    cheap_model_max_async = 1
+)

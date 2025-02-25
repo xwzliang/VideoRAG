@@ -114,7 +114,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # Please enter your openai key
 os.environ["OPENAI_API_KEY"] = ""
 
-from videorag._llm import *
+from videorag._llm import openai_4o_mini_config
 from videorag import VideoRAG, QueryParam
 
 
@@ -127,7 +127,7 @@ if __name__ == '__main__':
         'movies/Iron-Man.mp4',
         'movies/Spider-Man.mkv',
     ]
-    videorag = VideoRAG(cheap_model_func=gpt_4o_mini_complete, best_model_func=gpt_4o_mini_complete, working_dir=f"./videorag-workdir")
+    videorag = VideoRAG(llm=openai_4o_mini_config, working_dir=f"./videorag-workdir")
     videorag.insert_video(video_path_list=video_paths)
 ```
 
@@ -156,7 +156,7 @@ if __name__ == '__main__':
     # if param.wo_reference = False, VideoRAG will add reference to video clips in the response
     param.wo_reference = True
 
-    videorag = VideoRAG(cheap_model_func=gpt_4o_mini_complete, best_model_func=gpt_4o_mini_complete, working_dir=f"./videorag-workdir")
+    videorag = videorag = VideoRAG(llm=openai_4o_mini_config, working_dir=f"./videorag-workdir")
     videorag.load_caption_model(debug=False)
     response = videorag.query(query=query, param=param)
     print(response)
@@ -187,7 +187,7 @@ sh download.sh # downloading videos
 Then, you can run the following example command to process and answer queries for LongerVideos with VideoRAG:
 
 ```shell
-# Please enter your openai_key in line 18 at first
+# Please enter your openai_key in line 22 at first
 python videorag_experiment.py --collection 4-rag-lecture --cuda 0
 ```
 
@@ -246,7 +246,7 @@ python batch_winrate_quant_calculate.py
 
 ### Ollama Support
 
-This project also supports ollama.  To use, edit the ollama_config in _llm.py.
+This project also supports ollama.  To use, edit the ollama_config in [_llm.py](VideoRAG/videorag/_llm.py).
 Adjust the paramters of the models being used
 
 ```
@@ -265,16 +265,17 @@ ollama_config = LLMConfig(
     cheap_model_func_raw = ollama_mini_complete,
     cheap_model_name = "olmo2",
     cheap_model_max_token_size = 32768,
-    cheap_model_max_async = 1)
+    cheap_model_max_async = 1
+)
 ```
 And specify the config when creating your VideoRag instance
 
 ### Jupyter Notebook
 
-To  test the solution on a single video, just load the notebook in the notebook folder and
+To  test the solution on a single video, just load the notebook in the [notebook folder](VideoRAG/nodebooks) and
 update the paramters to fit your situation.
 
-YouTube video for example can be downloaded as
+YouTube video for example can be downloaded as follows:
 
 ```
 yt-dlp -o "%(id)s.%(ext)s" -S "res:720" https://www.youtube.com/live/DPa2iRgzadM?si=8cf8WbYtqiglrwtN  -P .
