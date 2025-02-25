@@ -189,7 +189,7 @@ Then, you can run the following example command to process and answer queries fo
 
 ```shell
 # Please enter your openai_key in line 22 at first
-python videorag_experiment.py --collection 4-rag-lecture --cuda 0
+python videorag_longervideos.py --collection 4-rag-lecture --cuda 0
 ```
 
 ### Evaluation
