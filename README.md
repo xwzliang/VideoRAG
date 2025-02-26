@@ -181,7 +181,7 @@ First, we need to download all the videos in 720p resolution using the `yt-dlp` 
 
 ```shell
 cd longervideos
-python prepare_videos.py # create collection folders
+python prepare_data.py # create collection folders
 sh download.sh # downloading videos
 ```
 
