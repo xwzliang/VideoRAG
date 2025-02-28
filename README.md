@@ -218,7 +218,7 @@ python batch_winrate_eval_upload.py
 python batch_winrate_eval_download.py
 
 # Third Step: Parsing the results. Please the output file ID in the file.
-python batch_winrate_eval_download.py
+python batch_winrate_eval_parse.py
 
 # Fourth Step: Calculate the results. Please enter the parsed result file name in the file.
 python batch_winrate_eval_calculate.py
@@ -233,16 +233,17 @@ We conduct a quantitative comparison, which extends the win-rate comparison by a
 cd reproduce/quantitative_comparison
 
 # First Step: Upload the batch request to OpenAI (remember to enter your key in the file, same for the following steps).
-python batch_winrate_quant_upload.py
+python batch_quant_eval_upload.py
 
 # Second Step: Download the results. Please enter the batch ID and then the output file ID in the file. Generally, you need to run this twice: first to obtain the output file ID, and then to download it.
-python batch_winrate_quant_download.py
+python batch_quant_eval_download.py
 
 # Third Step: Parsing the results. Please the output file ID in the file.
 python batch_winrate_quant_download.py
+python batch_quant_eval_parse.py
 
 # Fourth Step: Calculate the results. Please enter the parsed result file name in the file.
-python batch_winrate_quant_calculate.py
+python batch_quant_eval_calculate.py
 ```
 
 ## Ollama Support
