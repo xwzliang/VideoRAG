@@ -177,12 +177,12 @@ We constructed the LongerVideos benchmark to evaluate the model's performance in
 
 ### Process LongerVideos with VideoRAG
 
-First, we need to download all the videos in 720p resolution using the `yt-dlp` library. You can use the following commands to download all the videos in LongerVideos:
+Here are the commands you can refer to for preparing the videos used in LongerVideos.
 
 ```shell
 cd longervideos
 python prepare_data.py # create collection folders
-sh download.sh # downloading videos
+sh download.sh # obtain videos
 ```
 
 Then, you can run the following example command to process and answer queries for LongerVideos with VideoRAG:
