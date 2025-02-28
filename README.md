@@ -239,7 +239,6 @@ python batch_quant_eval_upload.py
 python batch_quant_eval_download.py
 
 # Third Step: Parsing the results. Please the output file ID in the file.
-python batch_winrate_quant_download.py
 python batch_quant_eval_parse.py
 
 # Fourth Step: Calculate the results. Please enter the parsed result file name in the file.
