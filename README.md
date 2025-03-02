@@ -272,16 +272,8 @@ ollama_config = LLMConfig(
 And specify the config when creating your VideoRag instance
 
 ### Jupyter Notebook
-
 To  test the solution on a single video, just load the notebook in the [notebook folder](VideoRAG/nodebooks) and
 update the paramters to fit your situation.
-
-YouTube video for example can be downloaded as follows:
-
-```
-yt-dlp -o "%(id)s.%(ext)s" -S "res:720" https://www.youtube.com/live/DPa2iRgzadM?si=8cf8WbYtqiglrwtN  -P .
-```
-
 
 ## Citation
 If you find this work is helpful to your research, please consider citing our paper:
