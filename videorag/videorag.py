@@ -194,7 +194,7 @@ class VideoRAG:
         self.llm.best_model_func = limit_async_func_call(self.llm.best_model_max_async)(
             partial(self.llm.best_model_func, hashing_kv=self.llm_response_cache)
         )
-        self.llm.best_model_func = limit_async_func_call(self.llm.cheap_model_max_async)(
+        self.llm.cheap_model_func = limit_async_func_call(self.llm.cheap_model_max_async)(
             partial(self.llm.cheap_model_func, hashing_kv=self.llm_response_cache)
         )
 
