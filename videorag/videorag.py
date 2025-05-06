@@ -23,6 +23,7 @@ from ._op import (
     extract_entities,
     get_chunks,
     videorag_query,
+    videorag_query_multiple_choice,
 )
 from ._storage import (
     JsonKVStorage,
@@ -306,6 +307,22 @@ class VideoRAG:
     async def aquery(self, query: str, param: QueryParam = QueryParam()):
         if param.mode == "videorag":
             response = await videorag_query(
+                query,
+                self.entities_vdb,
+                self.text_chunks,
+                self.chunks_vdb,
+                self.video_path_db,
+                self.video_segments,
+                self.video_segment_feature_vdb,
+                self.chunk_entity_relation_graph,
+                self.caption_model, 
+                self.caption_tokenizer,
+                param,
+                asdict(self),
+            )
+        # NOTE: update here
+        elif param.mode == "videorag_multiple_choice":
+            response = await videorag_query_multiple_choice(
                 query,
                 self.entities_vdb,
                 self.text_chunks,

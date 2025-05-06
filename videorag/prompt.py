@@ -401,3 +401,42 @@ Do not include information where the supporting evidence for it is not provided.
 ---Notice---
 Please add sections and commentary as appropriate for the length and format if necessary. Format the response in Markdown.
 """
+
+PROMPTS[
+    "videorag_response_for_multiple_choice_question"
+] = """---Role---
+
+You are a helpful assistant responding to a multiple-choice question with retrieved knowledge.
+
+---Goal---
+
+Generate a concise response that addresses the user's question by summarizing relevant information derived from the retrieved text and video content. Ensure the response aligns with the specified format and length.
+Please note that there is only one choice is correct.
+
+---Target response length and format---
+
+{response_type}
+
+---Retrieved Information From Videos---
+
+{video_data}
+
+---Retrieved Text Chunks---
+
+{chunk_data}
+
+---Goal---
+
+Generate a concise response that addresses the user's question by summarizing relevant information derived from the retrieved text and video content. Ensure the response aligns with the specified format and length.
+Please note that there is only one choice is correct.
+
+---Notice---
+Please provide your answer in JSON format as follows:
+{{
+    "Answer": "The label of the answer, like A/B/C/D or 1/2/3/4 or others, depending on the given query"
+    "Explanation": "Provide explanations for your choice. Use sections and commentary as needed to ensure clarity and depth. Format the response in Markdown."
+}}
+Key points:
+1. Ensure that the "Answer" reflects the correct label format.
+2. Structure the "Explanation" for clarity, using Markdown for any necessary formatting.
+"""

@@ -101,7 +101,8 @@ async def openai_complete_if_cache(
     if hashing_kv is not None:
         args_hash = compute_args_hash(model, messages)
         if_cache_return = await hashing_kv.get_by_id(args_hash)
-        if if_cache_return is not None:
+        # NOTE: I update here to avoid the if_cache_return["return"] is None
+        if if_cache_return is not None and if_cache_return["return"] is not None:
             return if_cache_return["return"]
 
     response = await openai_async_client.chat.completions.create(
@@ -211,7 +212,8 @@ async def azure_openai_complete_if_cache(
     if hashing_kv is not None:
         args_hash = compute_args_hash(deployment_name, messages)
         if_cache_return = await hashing_kv.get_by_id(args_hash)
-        if if_cache_return is not None:
+        # NOTE: I update here to avoid the if_cache_return["return"] is None
+        if if_cache_return is not None and if_cache_return["return"] is not None:
             return if_cache_return["return"]
 
     response = await azure_openai_client.chat.completions.create(
@@ -309,7 +311,8 @@ async def ollama_complete_if_cache(
     if hashing_kv is not None:
         args_hash = compute_args_hash(model, messages)
         if_cache_return = await hashing_kv.get_by_id(args_hash)
-        if if_cache_return is not None:
+        # NOTE: I update here to avoid the if_cache_return["return"] is None
+        if if_cache_return is not None and if_cache_return["return"] is not None:
             return if_cache_return["return"]
 
     # Send the request to Ollama
