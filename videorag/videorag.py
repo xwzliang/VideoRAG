@@ -430,3 +430,84 @@ class VideoRAG:
                 continue
             tasks.append(cast(StorageNameSpace, storage_inst).index_done_callback())
         await asyncio.gather(*tasks)
+
+    def delete_video(self, video_path):
+        """Delete a specific video and all its associated data from the system."""
+        # Get the video name (without extension) from the path
+        video_name = os.path.basename(video_path).split('.')[0]
+        loop = always_get_an_event_loop()
+        
+        # 1. Delete video segments from working directory
+        video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
+        if os.path.exists(video_segment_cache_path):
+            shutil.rmtree(video_segment_cache_path)
+            
+        # 2. Delete from video_path_db
+        if video_name in self.video_path_db._data:
+            del self.video_path_db._data[video_name]
+            loop.run_until_complete(self.video_path_db.index_done_callback())
+            
+        # 3. Delete from video_segments
+        if video_name in self.video_segments._data:
+            del self.video_segments._data[video_name]
+            loop.run_until_complete(self.video_segments.index_done_callback())
+            
+        # 4. Delete from video_segment_feature_vdb
+        if hasattr(self.video_segment_feature_vdb, 'delete'):
+            loop.run_until_complete(self.video_segment_feature_vdb.delete(video_name))
+        
+        # 5. Delete associated chunks and entities
+        # First get all chunk keys associated with this video
+        chunk_keys_to_delete = []
+        for chunk_key in list(self.text_chunks._data.keys()):
+            if chunk_key.startswith(f"{video_name}_"):
+                chunk_keys_to_delete.append(chunk_key)
+                
+        if chunk_keys_to_delete:
+            # Delete from text_chunks
+            for key in chunk_keys_to_delete:
+                del self.text_chunks._data[key]
+            loop.run_until_complete(self.text_chunks.index_done_callback())
+            
+            # Delete from chunks_vdb if enabled
+            if self.enable_naive_rag and hasattr(self.chunks_vdb, 'delete'):
+                loop.run_until_complete(self.chunks_vdb.delete(chunk_keys_to_delete))
+                
+            # Delete from entities_vdb if enabled
+            if self.enable_local:
+                # Get all entity keys associated with these chunks
+                entity_keys_to_delete = []
+                for chunk_key in chunk_keys_to_delete:
+                    if chunk_key in self.chunk_entity_relation_graph._graph:
+                        for entity in self.chunk_entity_relation_graph._graph[chunk_key]:
+                            entity_keys_to_delete.append(entity)
+                
+                if entity_keys_to_delete and hasattr(self.entities_vdb, 'delete'):
+                    loop.run_until_complete(self.entities_vdb.delete(entity_keys_to_delete))
+                    
+                # Remove edges from graph
+                for chunk_key in chunk_keys_to_delete:
+                    if chunk_key in self.chunk_entity_relation_graph._graph:
+                        del self.chunk_entity_relation_graph._graph[chunk_key]
+        
+        # 6. Save changes
+        loop.run_until_complete(self._save_video_segments())
+        logger.info(f"Successfully deleted video {video_name} and all associated data")
+
+    def regenerate_video(self, video_path):
+        """Delete and reinsert a video to regenerate all its data.
+        
+        Args:
+            video_path (str): Path to the video file to regenerate
+        """
+        logger.info(f"Regenerating video: {video_path}")
+        
+        # First delete the video
+        self.delete_video(video_path)
+        logger.info(f"Successfully deleted video: {video_path}")
+        
+        # Then reinsert it
+        self.insert_video(video_path_list=[video_path])
+        logger.info(f"Successfully reinserted video: {video_path}")
+        
+        return True

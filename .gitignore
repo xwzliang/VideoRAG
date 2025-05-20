@@ -2,3 +2,6 @@
 videorag/__pycache__/
 *.py[cod]
 *$py.class
+*.pth
+videorag-workdir/
+*.txt

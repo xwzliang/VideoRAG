@@ -3,8 +3,31 @@ import torch
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
+import requests
 from moviepy.video.io.VideoFileClip import VideoFileClip
+import gc
+
+def load_model():
+    """Request server to load the model."""
+    try:
+        response = requests.post("http://localhost:8000/load_model")
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error loading model: {str(e)}")
+        return False
+
+def unload_model():
+    """Request server to unload the model."""
+    try:
+        response = requests.post("http://localhost:8000/unload_model")
+        response.raise_for_status()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error unloading model: {str(e)}")
+        return False
 
 def encode_video(video, frame_times):
     frames = []
@@ -16,28 +39,44 @@ def encode_video(video, frame_times):
     
 def segment_caption(video_name, video_path, segment_index2name, transcripts, segment_times_info, caption_result, error_queue):
     try:
-        model = AutoModel.from_pretrained('./MiniCPM-V-2_6-int4', trust_remote_code=True)
-        tokenizer = AutoTokenizer.from_pretrained('./MiniCPM-V-2_6-int4', trust_remote_code=True)
-        model.eval()
+        # Qwen-VL API endpoint
+        QWENVL_API_URL = "http://localhost:8000/generate_caption"
         
-        with VideoFileClip(video_path) as video:
+        # Load model before processing
+        if not load_model():
+            error_queue.put("Failed to load model")
+            raise RuntimeError("Failed to load model")
+            
+        try:
             for index in tqdm(segment_index2name, desc=f"Captioning Video {video_name}"):
-                frame_times = segment_times_info[index]["frame_times"]
-                video_frames = encode_video(video, frame_times)
                 segment_transcript = transcripts[index]
-                query = f"The transcript of the current video:\n{segment_transcript}.\nNow provide a description (caption) of the video in English."
-                msgs = [{'role': 'user', 'content': video_frames + [query]}]
-                params = {}
-                params["use_image_id"] = False
-                params["max_slice_nums"] = 2
-                segment_caption = model.chat(
-                    image=None,
-                    msgs=msgs,
-                    tokenizer=tokenizer,
-                    **params
-                )
-                caption_result[index] = segment_caption.replace("\n", "").replace("<|endoftext|>", "")
-                torch.cuda.empty_cache()
+                start_time = segment_times_info[index]["frame_times"][0]
+                end_time = segment_times_info[index]["frame_times"][-1]
+                
+                # Prepare request data for Qwen-VL
+                request_data = {
+                    "video_path": video_path,
+                    "start_time": float(start_time),
+                    "end_time": float(end_time),
+                    "transcript": segment_transcript,
+                    "query": "Provide a detailed description of the video in English, focusing on the visual content, actions, and important details.",
+                    "fps": 2.0  # Adjust based on your needs
+                }
+                
+                # Make request to Qwen-VL API
+                try:
+                    response = requests.post(QWENVL_API_URL, json=request_data)
+                    response.raise_for_status()
+                    segment_caption = response.json()["caption"]
+                except requests.exceptions.RequestException as e:
+                    error_queue.put(f"Error calling Qwen-VL API:\n {str(e)}")
+                    raise RuntimeError
+                
+                caption_result[index] = segment_caption.replace("\n", " ").strip()
+        finally:
+            # Always unload model after processing
+            unload_model()
+                
     except Exception as e:
         error_queue.put(f"Error in segment_caption:\n {str(e)}")
         raise RuntimeError
@@ -54,35 +93,47 @@ def merge_segment_information(segment_index2name, segment_times_info, transcript
     return inserting_segments
         
 def retrieved_segment_caption(caption_model, caption_tokenizer, refine_knowledge, retrieved_segments, video_path_db, video_segments, num_sampled_frames):
-    # model = AutoModel.from_pretrained('./MiniCPM-V-2_6-int4', trust_remote_code=True)
-    # tokenizer = AutoTokenizer.from_pretrained('./MiniCPM-V-2_6-int4', trust_remote_code=True)
-    # model.eval()
+    # Qwen-VL API endpoint
+    QWENVL_API_URL = "http://localhost:8000/generate_caption"
     
-    caption_result = {}
-    for this_segment in tqdm(retrieved_segments, desc='Captioning Segments for Given Query'):
-        video_name = '_'.join(this_segment.split('_')[:-1])
-        index = this_segment.split('_')[-1]
-        video_path = video_path_db._data[video_name]
-        timestamp = video_segments._data[video_name][index]["time"].split('-')
-        start, end = eval(timestamp[0]), eval(timestamp[1])
-        video = VideoFileClip(video_path)
-        frame_times = np.linspace(start, end, num_sampled_frames, endpoint=False)
-        video_frames = encode_video(video, frame_times)
-        segment_transcript = video_segments._data[video_name][index]["transcript"]
-        # query = f"The transcript of the current video:\n{segment_transcript}.\nGiven a question: {query}, you have to extract relevant information from the video and transcript for answering the question."
-        query = f"The transcript of the current video:\n{segment_transcript}.\nNow provide a very detailed description (caption) of the video in English and extract relevant information about: {refine_knowledge}'"
-        msgs = [{'role': 'user', 'content': video_frames + [query]}]
-        params = {}
-        params["use_image_id"] = False
-        params["max_slice_nums"] = 2
-        segment_caption = caption_model.chat(
-            image=None,
-            msgs=msgs,
-            tokenizer=caption_tokenizer,
-            **params
-        )
-        this_caption = segment_caption.replace("\n", "").replace("<|endoftext|>", "")
-        caption_result[this_segment] = f"Caption:\n{this_caption}\nTranscript:\n{segment_transcript}\n\n"
-        torch.cuda.empty_cache()
-    
-    return caption_result
+    # Load model before processing
+    if not load_model():
+        print("Failed to load model")
+        return {}
+        
+    try:
+        caption_result = {}
+        for this_segment in tqdm(retrieved_segments, desc='Captioning Segments for Given Query'):
+            video_name = '_'.join(this_segment.split('_')[:-1])
+            index = this_segment.split('_')[-1]
+            video_path = video_path_db._data[video_name]
+            timestamp = video_segments._data[video_name][index]["time"].split('-')
+            start_time, end_time = eval(timestamp[0]), eval(timestamp[1])
+            
+            segment_transcript = video_segments._data[video_name][index]["transcript"]
+            
+            # Prepare request data for Qwen-VL with refined query
+            request_data = {
+                "video_path": video_path,
+                "start_time": float(start_time),
+                "end_time": float(end_time),
+                "transcript": segment_transcript,
+                "query": f"Analyze this video segment and provide detailed information about: {refine_knowledge}. Focus on visual details and their connection to the transcript.",
+                "fps": 5.0  # Adjust based on your needs
+            }
+            
+            # Make request to Qwen-VL API
+            try:
+                response = requests.post(QWENVL_API_URL, json=request_data)
+                response.raise_for_status()
+                this_caption = response.json()["caption"]
+            except requests.exceptions.RequestException as e:
+                print(f"Error calling Qwen-VL API: {str(e)}")
+                this_caption = "Error generating caption"
+                
+            caption_result[this_segment] = f"Caption:\n{this_caption}\nTranscript:\n{segment_transcript}\n\n"
+            
+        return caption_result
+    finally:
+        # Always unload model after processing
+        unload_model()

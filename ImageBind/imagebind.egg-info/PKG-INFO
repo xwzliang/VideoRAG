@@ -1,4 +1,4 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.4
 Name: imagebind
 Version: 0.1.0
 Summary: A brief description of the package
@@ -11,6 +11,7 @@ Dynamic: classifier
 Dynamic: description
 Dynamic: description-content-type
 Dynamic: home-page
+Dynamic: license-file
 Dynamic: summary
 
 # ImageBind: One Embedding Space To Bind Them All
