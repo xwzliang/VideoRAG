@@ -29,6 +29,28 @@ def unload_model():
         print(f"Error unloading model: {str(e)}")
         return False
 
+def load_llm_model():
+    """Request server to load the DeepSeek model for LLM tasks."""
+    try:
+        response = requests.post("http://localhost:8002/load_model")
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error loading DeepSeek model: {str(e)}")
+        return False
+
+def unload_llm_model():
+    """Request server to unload the DeepSeek model."""
+    try:
+        response = requests.post("http://localhost:8002/unload_model")
+        response.raise_for_status()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error unloading DeepSeek model: {str(e)}")
+        return False
+
 def encode_video(video, frame_times):
     frames = []
     for t in frame_times:

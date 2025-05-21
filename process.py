@@ -25,8 +25,8 @@ from videorag import VideoRAG, QueryParam
 # Configure local models
 local_model_config = ollama_config
 local_model_config.embedding_model_name = "nomic-embed-text"  # Local embedding model
-local_model_config.best_model_name = "deepseek-coder:latest"  # DeepSeek model
-local_model_config.cheap_model_name = "deepseek-coder:latest"  # Using same model for both
+local_model_config.best_model_name = "deepseek-coder"  # DeepSeek model name (without :latest)
+local_model_config.cheap_model_name = "deepseek-coder"  # Using same model for both
 
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn')

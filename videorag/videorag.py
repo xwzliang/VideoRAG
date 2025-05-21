@@ -54,6 +54,7 @@ from ._videoutil import(
     merge_segment_information,
     saving_video_segments,
 )
+from ._videoutil.caption import load_llm_model, unload_llm_model
 
 
 @dataclass
@@ -305,82 +306,95 @@ class VideoRAG:
         return loop.run_until_complete(self.aquery(query, param))
 
     async def aquery(self, query: str, param: QueryParam = QueryParam()):
-        if param.mode == "videorag":
-            response = await videorag_query(
-                query,
-                self.entities_vdb,
-                self.text_chunks,
-                self.chunks_vdb,
-                self.video_path_db,
-                self.video_segments,
-                self.video_segment_feature_vdb,
-                self.chunk_entity_relation_graph,
-                self.caption_model, 
-                self.caption_tokenizer,
-                param,
-                asdict(self),
-            )
-        # NOTE: update here
-        elif param.mode == "videorag_multiple_choice":
-            response = await videorag_query_multiple_choice(
-                query,
-                self.entities_vdb,
-                self.text_chunks,
-                self.chunks_vdb,
-                self.video_path_db,
-                self.video_segments,
-                self.video_segment_feature_vdb,
-                self.chunk_entity_relation_graph,
-                self.caption_model, 
-                self.caption_tokenizer,
-                param,
-                asdict(self),
-            )
-        else:
-            raise ValueError(f"Unknown mode {param.mode}")
-        await self._query_done()
-        return response
+        # Load DeepSeek model for querying
+        if not load_llm_model():
+            raise RuntimeError("Failed to load DeepSeek model for querying")
+            
+        try:
+            if param.mode == "videorag":
+                response = await videorag_query(
+                    query,
+                    self.entities_vdb,
+                    self.text_chunks,
+                    self.chunks_vdb,
+                    self.video_path_db,
+                    self.video_segments,
+                    self.video_segment_feature_vdb,
+                    self.chunk_entity_relation_graph,
+                    self.caption_model, 
+                    self.caption_tokenizer,
+                    param,
+                    asdict(self),
+                )
+            # NOTE: update here
+            elif param.mode == "videorag_multiple_choice":
+                response = await videorag_query_multiple_choice(
+                    query,
+                    self.entities_vdb,
+                    self.text_chunks,
+                    self.chunks_vdb,
+                    self.video_path_db,
+                    self.video_segments,
+                    self.video_segment_feature_vdb,
+                    self.chunk_entity_relation_graph,
+                    self.caption_model, 
+                    self.caption_tokenizer,
+                    param,
+                    asdict(self),
+                )
+            else:
+                raise ValueError(f"Unknown mode {param.mode}")
+            await self._query_done()
+            return response
+        finally:
+            # Always unload the model after processing
+            unload_llm_model()
 
     async def ainsert(self, new_video_segment):
         await self._insert_start()
         try:
-            # ---------- chunking
-            inserting_chunks = get_chunks(
-                new_videos=new_video_segment,
-                chunk_func=self.chunk_func,
-                max_token_size=self.chunk_token_size,
-            )
-            _add_chunk_keys = await self.text_chunks.filter_keys(
-                list(inserting_chunks.keys())
-            )
-            inserting_chunks = {
-                k: v for k, v in inserting_chunks.items() if k in _add_chunk_keys
-            }
-            if not len(inserting_chunks):
-                logger.warning(f"All chunks are already in the storage")
-                return
-            logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
-            if self.enable_naive_rag:
-                logger.info("Insert chunks for naive RAG")
-                await self.chunks_vdb.upsert(inserting_chunks)
+            # Load DeepSeek model for entity extraction
+            if not load_llm_model():
+                raise RuntimeError("Failed to load DeepSeek model for entity extraction")
+            
+            try:
+                # ---------- chunking
+                inserting_chunks = get_chunks(
+                    new_videos=new_video_segment,
+                    chunk_func=self.chunk_func,
+                    max_token_size=self.chunk_token_size,
+                )
+                _add_chunk_keys = await self.text_chunks.filter_keys(
+                    list(inserting_chunks.keys())
+                )
+                inserting_chunks = {
+                    k: v for k, v in inserting_chunks.items() if k in _add_chunk_keys
+                }
+                if not len(inserting_chunks):
+                    logger.warning(f"All chunks are already in the storage")
+                    return
+                logger.info(f"[New Chunks] inserting {len(inserting_chunks)} chunks")
+                if self.enable_naive_rag:
+                    logger.info("Insert chunks for naive RAG")
+                    await self.chunks_vdb.upsert(inserting_chunks)
 
-            # TODO: no incremental update for communities now, so just drop all
-            # await self.community_reports.drop()
-
-            # ---------- extract/summary entity and upsert to graph
-            logger.info("[Entity Extraction]...")
-            maybe_new_kg, _, _ = await self.entity_extraction_func(
-                inserting_chunks,
-                knowledge_graph_inst=self.chunk_entity_relation_graph,
-                entity_vdb=self.entities_vdb,
-                global_config=asdict(self),
-            )
-            if maybe_new_kg is None:
-                logger.warning("No new entities found")
-                return
-            self.chunk_entity_relation_graph = maybe_new_kg
-            # ---------- commit upsertings and indexing
-            await self.text_chunks.upsert(inserting_chunks)
+                # ---------- extract/summary entity and upsert to graph
+                logger.info("[Entity Extraction]...")
+                maybe_new_kg, _, _ = await self.entity_extraction_func(
+                    inserting_chunks,
+                    knowledge_graph_inst=self.chunk_entity_relation_graph,
+                    entity_vdb=self.entities_vdb,
+                    global_config=asdict(self),
+                )
+                if maybe_new_kg is None:
+                    logger.warning("No new entities found")
+                    return
+                self.chunk_entity_relation_graph = maybe_new_kg
+                # ---------- commit upsertings and indexing
+                await self.text_chunks.upsert(inserting_chunks)
+            finally:
+                # Always unload the model after processing
+                unload_llm_model()
         finally:
             await self._insert_done()
 

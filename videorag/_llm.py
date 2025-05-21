@@ -1,4 +1,5 @@
 import numpy as np
+import json
 
 from openai import AsyncOpenAI, AsyncAzureOpenAI, APIConnectionError, RateLimitError
 from ollama import AsyncClient
@@ -19,6 +20,7 @@ from ._utils import EmbeddingFunc
 global_openai_async_client = None
 global_azure_openai_async_client = None
 global_ollama_client = None
+global_deepseek_client = None
 
 def get_openai_async_client_instance():
     global global_openai_async_client
@@ -36,9 +38,16 @@ def get_azure_openai_async_client_instance():
 def get_ollama_async_client_instance():
     global global_ollama_client
     if global_ollama_client is None:
-        # set OLLAMA_HOST or pass in host="http://127.0.0.1:11434"
-        global_ollama_client = AsyncClient()  # Adjust base URL if necessary        
+        # Use default Ollama port for embeddings
+        global_ollama_client = AsyncClient(host="http://localhost:11434")
     return global_ollama_client
+
+def get_deepseek_async_client_instance():
+    global global_deepseek_client
+    if global_deepseek_client is None:
+        # Use DeepSeek's Ollama-compatible API
+        global_deepseek_client = AsyncClient(host="http://localhost:8001")
+    return global_deepseek_client
 
 # Setup LLM Configuration.
 @dataclass
@@ -297,8 +306,8 @@ azure_openai_config = LLMConfig(
 async def ollama_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
-    # Initialize the Ollama client
-    ollama_client = get_ollama_async_client_instance()
+    # Initialize the DeepSeek client for text generation
+    client = get_deepseek_async_client_instance()
 
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
     messages = []
@@ -311,26 +320,45 @@ async def ollama_complete_if_cache(
     if hashing_kv is not None:
         args_hash = compute_args_hash(model, messages)
         if_cache_return = await hashing_kv.get_by_id(args_hash)
-        # NOTE: I update here to avoid the if_cache_return["return"] is None
         if if_cache_return is not None and if_cache_return["return"] is not None:
             return if_cache_return["return"]
 
-    # Send the request to Ollama
-    response = await ollama_client.chat(
-        model=model,
-        messages=messages
-    )
-    # print(messages)
-    # print(response['message']['content'])
-
+    # Format the chat history into a single prompt string
+    formatted_prompt = ""
+    for msg in messages:
+        if msg["role"] == "system":
+            formatted_prompt += f"System: {msg['content']}\n"
+        elif msg["role"] == "user":
+            formatted_prompt += f"User: {msg['content']}\n"
+        elif msg["role"] == "assistant":
+            formatted_prompt += f"Assistant: {msg['content']}\n"
+    
+    # Send the request to DeepSeek using streaming
+    full_response = ""
+    try:
+        # First await the generate coroutine to get the stream
+        stream = await client.generate(
+            model=model,
+            prompt=formatted_prompt,
+            system=system_prompt,
+            stream=True
+        )
+        
+        # Then iterate over the stream
+        async for chunk in stream:
+            if chunk.get('response'):
+                full_response += chunk['response']
+    except Exception as e:
+        print(f"Error in streaming response: {str(e)}")
+        raise
     
     if hashing_kv is not None:
         await hashing_kv.upsert(
-            {args_hash: {"return": response['message']['content'], "model": model}}
+            {args_hash: {"return": full_response, "model": model}}
         )
         await hashing_kv.index_done_callback()
 
-    return response['message']['content']
+    return full_response
 
 
 async def ollama_complete(model_name, prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
@@ -356,7 +384,7 @@ async def ollama_mini_complete(model_name, prompt, system_prompt=None, history_m
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 async def ollama_embedding(model_name: str, texts: list[str]) -> np.ndarray:
-    # Initialize the Ollama client
+    # Initialize the Ollama client for embeddings
     ollama_client = get_ollama_async_client_instance()
 
     # Send the request to Ollama for embeddings
@@ -371,19 +399,19 @@ async def ollama_embedding(model_name: str, texts: list[str]) -> np.ndarray:
     return np.array(embeddings)
 
 ollama_config = LLMConfig(
-    embedding_func_raw = ollama_embedding,
+    embedding_func_raw = ollama_embedding,  # Use Ollama's native API for embeddings
     embedding_model_name = "nomic-embed-text",
     embedding_dim = 768,
     embedding_max_token_size=8192,
     embedding_batch_num = 1,
     embedding_func_max_async = 1,
     query_better_than_threshold = 0.2,
-    best_model_func_raw = ollama_complete ,
-    best_model_name = "gemma2:latest", # need to be a solid instruct model
+    best_model_func_raw = ollama_complete,
+    best_model_name = "deepseek-coder",  # Use DeepSeek through Ollama-compatible API
     best_model_max_token_size = 32768,
-    best_model_max_async  = 1,
+    best_model_max_async = 1,
     cheap_model_func_raw = ollama_mini_complete,
-    cheap_model_name = "olmo2",
+    cheap_model_name = "deepseek-coder",  # Use DeepSeek through Ollama-compatible API
     cheap_model_max_token_size = 32768,
     cheap_model_max_async = 1
 )
