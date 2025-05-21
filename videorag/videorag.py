@@ -10,6 +10,7 @@ from functools import partial
 from typing import Callable, Dict, List, Optional, Type, Union, cast
 from transformers import AutoModel, AutoTokenizer
 import tiktoken
+import requests
 
 
 from ._llm import (
@@ -54,7 +55,7 @@ from ._videoutil import(
     merge_segment_information,
     saving_video_segments,
 )
-from ._videoutil.caption import load_llm_model, unload_llm_model
+from ._videoutil.caption import load_vision_model, unload_vision_model, load_llm_model, unload_llm_model
 
 
 @dataclass
@@ -119,16 +120,6 @@ class VideoRAG:
     addon_params: dict = field(default_factory=dict)
     convert_response_to_json_func: callable = convert_response_to_json
 
-    def load_caption_model(self, debug=False):
-        # caption model
-        if not debug:
-            self.caption_model = AutoModel.from_pretrained('./MiniCPM-V-2_6-int4', trust_remote_code=True)
-            self.caption_tokenizer = AutoTokenizer.from_pretrained('./MiniCPM-V-2_6-int4', trust_remote_code=True)
-            self.caption_model.eval()
-        else:
-            self.caption_model = None
-            self.caption_tokenizer = None
-    
     def __post_init__(self):
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in asdict(self).items()])
         logger.debug(f"VideoRAG init with param:\n\n  {_print_config}\n")
@@ -200,6 +191,27 @@ class VideoRAG:
             partial(self.llm.cheap_model_func, hashing_kv=self.llm_response_cache)
         )
 
+        # Initialize caption model and tokenizer attributes
+        self.caption_model = None
+        self.caption_tokenizer = None
+
+    def load_caption_model(self, debug=False):
+        # caption model
+        if not debug:
+            import requests
+            try:
+                # Request server to load the vision model
+                response = requests.post("http://localhost:8000/load_model")
+                response.raise_for_status()
+                self.caption_model = "Qwen/Qwen-VL-Chat"  # This will be used via REST API
+                self.caption_tokenizer = "Qwen/Qwen-VL-Chat"  # Set this to match model name for compatibility
+            except requests.exceptions.RequestException as e:
+                print(f"Error loading Qwen-VL model: {str(e)}")
+                raise RuntimeError("Failed to load Qwen-VL model")
+        else:
+            self.caption_model = None
+            self.caption_tokenizer = None
+    
     def insert_video(self, video_path_list=None):
         loop = always_get_an_event_loop()
         for video_path in video_path_list:
@@ -349,6 +361,7 @@ class VideoRAG:
         finally:
             # Always unload the model after processing
             unload_llm_model()
+            pass
 
     async def ainsert(self, new_video_segment):
         await self._insert_start()
@@ -525,3 +538,26 @@ class VideoRAG:
         logger.info(f"Successfully reinserted video: {video_path}")
         
         return True
+
+    def regenerate_query(self, query: str, param: QueryParam = QueryParam()):
+        """Clear the cache and re-run a query.
+        
+        Args:
+            query (str): The query to regenerate
+            param (QueryParam): Query parameters
+            
+        Returns:
+            The regenerated query response
+        """
+        logger.info(f"Regenerating query: {query}")
+        
+        # Clear the LLM response cache
+        if self.llm_response_cache is not None:
+            self.llm_response_cache._data = {}
+            logger.info("Cleared LLM response cache")
+        
+        # Run the query again
+        response = self.query(query, param)
+        logger.info(f"Successfully regenerated query response")
+        
+        return response

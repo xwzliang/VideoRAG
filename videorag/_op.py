@@ -550,9 +550,10 @@ async def _refine_entity_retrieval_query(
     global_config: dict,
 ):
     use_llm_func: callable = global_config["llm"]["cheap_model_func"]
-    query_rewrite_prompt = PROMPTS["query_rewrite_for_entity_retrieval"]
-    query_rewrite_prompt = query_rewrite_prompt.format(input_text=query)
+    query_rewrite_prompt = PROMPTS["query_rewrite_for_entity_retrieval"].format(input_text=query)
+    logger.info(f"Query rewrite prompt: {query_rewrite_prompt}")
     final_result = await use_llm_func(query_rewrite_prompt)
+    logger.info(f"Query rewrite result: {final_result}")
     return final_result
 
 async def _refine_visual_retrieval_query(
@@ -600,6 +601,11 @@ async def videorag_query(
         return PROMPTS["fail_response"]
     chunks_ids = [r["id"] for r in results]
     chunks = await text_chunks_db.get_by_ids(chunks_ids)
+    
+    # Filter out None values and ensure all chunks have content
+    chunks = [c for c in chunks if c is not None and "content" in c]
+    if not chunks:
+        return PROMPTS["fail_response"]
 
     maybe_trun_chunks = truncate_list_by_token_size(
         chunks,
@@ -769,15 +775,20 @@ async def videorag_query_multiple_choice(
     if len(results):
         chunks_ids = [r["id"] for r in results]
         chunks = await text_chunks_db.get_by_ids(chunks_ids)
-
-        maybe_trun_chunks = truncate_list_by_token_size(
-            chunks,
-            key=lambda x: x["content"],
-            max_token_size=query_param.naive_max_token_for_text_unit,
-        )
-        logger.info(f"Truncate {len(chunks)} to {len(maybe_trun_chunks)} chunks")
-        section = "-----New Chunk-----\n".join([c["content"] for c in maybe_trun_chunks])
-        retreived_chunk_context = section
+        
+        # Filter out None values and ensure all chunks have content
+        chunks = [c for c in chunks if c is not None and "content" in c]
+        if chunks:  # Only process if we have valid chunks
+            maybe_trun_chunks = truncate_list_by_token_size(
+                chunks,
+                key=lambda x: x["content"],
+                max_token_size=query_param.naive_max_token_for_text_unit,
+            )
+            logger.info(f"Truncate {len(chunks)} to {len(maybe_trun_chunks)} chunks")
+            section = "-----New Chunk-----\n".join([c["content"] for c in maybe_trun_chunks])
+            retreived_chunk_context = section
+        else:
+            retreived_chunk_context = "No Content"
     else:
         retreived_chunk_context = "No Content"
         

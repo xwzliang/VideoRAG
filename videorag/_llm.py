@@ -1,5 +1,9 @@
 import numpy as np
 import json
+import asyncio
+import time
+from typing import Optional, List, Dict, Any, Union
+import httpx
 
 from openai import AsyncOpenAI, AsyncAzureOpenAI, APIConnectionError, RateLimitError
 from ollama import AsyncClient
@@ -13,7 +17,7 @@ from tenacity import (
 )
 import os
 
-from ._utils import compute_args_hash, wrap_embedding_func_with_attrs
+from ._utils import compute_args_hash, wrap_embedding_func_with_attrs, logger
 from .base import BaseKVStorage
 from ._utils import EmbeddingFunc
 
@@ -38,15 +42,15 @@ def get_azure_openai_async_client_instance():
 def get_ollama_async_client_instance():
     global global_ollama_client
     if global_ollama_client is None:
-        # Use default Ollama port for embeddings
-        global_ollama_client = AsyncClient(host="http://localhost:11434")
+        # Use default Ollama port for embeddings with increased timeout
+        global_ollama_client = AsyncClient(host="http://localhost:11434", timeout=1200.0)  # 20 minutes timeout
     return global_ollama_client
 
 def get_deepseek_async_client_instance():
     global global_deepseek_client
     if global_deepseek_client is None:
-        # Use DeepSeek's Ollama-compatible API
-        global_deepseek_client = AsyncClient(host="http://localhost:8001")
+        # Use DeepSeek's Ollama-compatible API with increased timeout
+        global_deepseek_client = AsyncClient(host="http://localhost:8001", timeout=1200.0)  # 20 minutes timeout
     return global_deepseek_client
 
 # Setup LLM Configuration.
@@ -94,7 +98,7 @@ class LLMConfig:
 ##### OpenAI Configuration
 @retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
+    wait=wait_exponential(multiplier=2, min=8, max=30),  # Increased wait times
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 async def openai_complete_if_cache(
@@ -304,78 +308,125 @@ azure_openai_config = LLMConfig(
 ######  Ollama configuration
 
 async def ollama_complete_if_cache(
-    model, prompt, system_prompt=None, history_messages=[], **kwargs
+    prompt: str,
+    model_name: str = "deepseek-coder",
+    system_prompt: Optional[str] = None,
+    history_messages: Optional[List[Dict[str, str]]] = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    hashing_kv=None,
+    use_cache: bool = True,
+    max_retries: int = 5,  # Increased from 3
+    retry_delay: float = 2.0,  # Increased from 1.0
 ) -> str:
-    # Initialize the DeepSeek client for text generation
-    client = get_deepseek_async_client_instance()
+    """Complete a prompt using DeepSeek service with caching and retry logic."""
+    print(f"===============ollama_complete_if_cache called with prompt: {prompt}")
+    # Check cache first
+    if hashing_kv is not None and use_cache:
+        cache_key = f"{model_name}:{prompt}:{system_prompt}:{json.dumps(history_messages) if history_messages else ''}"
+        cached_response = await hashing_kv.get_by_id(cache_key)
+        if cached_response is not None:
+            return cached_response
 
-    hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
-    messages = []
-    
+    # Format the prompt
+    formatted_prompt = prompt
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.extend(history_messages)
-    messages.append({"role": "user", "content": prompt})
+        formatted_prompt = f"System: {system_prompt}\n\nUser: {prompt}"
+    else:
+        formatted_prompt = f"User: {prompt}"
 
-    if hashing_kv is not None:
-        args_hash = compute_args_hash(model, messages)
-        if_cache_return = await hashing_kv.get_by_id(args_hash)
-        if if_cache_return is not None and if_cache_return["return"] is not None:
-            return if_cache_return["return"]
+    # Prepare request data
+    data = {
+        "model": "DeepSeek-R1",  # Use the correct model name
+        "prompt": formatted_prompt,
+        "stream": True
+    }
 
-    # Format the chat history into a single prompt string
-    formatted_prompt = ""
-    for msg in messages:
-        if msg["role"] == "system":
-            formatted_prompt += f"System: {msg['content']}\n"
-        elif msg["role"] == "user":
-            formatted_prompt += f"User: {msg['content']}\n"
-        elif msg["role"] == "assistant":
-            formatted_prompt += f"Assistant: {msg['content']}\n"
-    
-    # Send the request to DeepSeek using streaming
-    full_response = ""
-    try:
-        # First await the generate coroutine to get the stream
-        stream = await client.generate(
-            model=model,
-            prompt=formatted_prompt,
-            system=system_prompt,
-            stream=True
-        )
-        
-        # Then iterate over the stream
-        async for chunk in stream:
-            if chunk.get('response'):
-                full_response += chunk['response']
-    except Exception as e:
-        print(f"Error in streaming response: {str(e)}")
-        raise
-    
-    if hashing_kv is not None:
-        await hashing_kv.upsert(
-            {args_hash: {"return": full_response, "model": model}}
-        )
-        await hashing_kv.index_done_callback()
+    # Log request details
+    logger.info(f"Model name: {data['model']}")
+    logger.info(f"Original prompt: {prompt}")
+    logger.info(f"Formatted prompt: {formatted_prompt}")
+    logger.info(f"Full request data: {json.dumps(data, indent=2)}")
 
-    return full_response
+    # Retry logic
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    "http://localhost:8001/api/generate",
+                    json=data,
+                    headers={
+                        "accept": "application/json",
+                        "Content-Type": "application/json"
+                    }
+                )
+                response.raise_for_status()
+                
+                # Handle streaming response
+                full_response = ""
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            chunk = json.loads(line)
+                            if "response" in chunk:
+                                full_response += chunk["response"]
+                        except json.JSONDecodeError:
+                            continue
+                
+                response_text = full_response.strip()
+                logger.info(f"Received response from DeepSeek:\n{response_text}")
+                
+                # Cache the response
+                if hashing_kv is not None and use_cache:
+                    await hashing_kv.upsert({cache_key: response_text})
+                
+                return response_text
+                    
+        except (httpx.ReadError, httpx.ConnectError, httpx.TimeoutException) as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                error_msg = f"Failed to get response from DeepSeek service after {max_retries} attempts: {str(e)}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+        except Exception as e:
+            error_msg = f"Unexpected error during DeepSeek request: {str(e)}"
+            logger.error(error_msg)
+            raise
 
-
-async def ollama_complete(model_name, prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+async def ollama_mini_complete(
+    model_name: str,
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    history_messages: Optional[List[Dict[str, str]]] = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    hashing_kv=None,
+    use_cache: bool = True,
+) -> str:
+    """Wrapper for ollama_complete_if_cache with mini model settings."""
+    logger.info(f"ollama_mini_complete called with prompt: {prompt}")
     return await ollama_complete_if_cache(
-        model_name,
-        prompt,
+        prompt=prompt,
+        model_name=model_name,
         system_prompt=system_prompt,
-        history_messages=history_messages
+        history_messages=history_messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        hashing_kv=hashing_kv,
+        use_cache=use_cache
     )
 
-async def ollama_mini_complete(model_name, prompt, system_prompt=None, history_messages=[], **kwargs) -> str:
+async def ollama_complete(model_name: str, prompt: str, system_prompt=None, history_messages=[], **kwargs) -> str:
+    logger.info(f"ollama_complete called with prompt: {prompt}")
     return await ollama_complete_if_cache(
-        # "deepseek-r1:latest",  # For now select your model
-        model_name,
-        prompt,
+        prompt=prompt,
+        model_name=model_name,
         system_prompt=system_prompt,
-        history_messages=history_messages
+        history_messages=history_messages,
+        **kwargs
     )
 
 @retry(

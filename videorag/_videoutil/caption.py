@@ -7,18 +7,18 @@ import requests
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import gc
 
-def load_model():
-    """Request server to load the model."""
+def load_vision_model():
+    """Request server to load the vision model."""
     try:
         response = requests.post("http://localhost:8000/load_model")
         response.raise_for_status()
         return True
     except requests.exceptions.RequestException as e:
-        print(f"Error loading model: {str(e)}")
+        print(f"Error loading vision model: {str(e)}")
         return False
 
-def unload_model():
-    """Request server to unload the model."""
+def unload_vision_model():
+    """Request server to unload the vision model."""
     try:
         response = requests.post("http://localhost:8000/unload_model")
         response.raise_for_status()
@@ -26,7 +26,7 @@ def unload_model():
             torch.cuda.empty_cache()
         return True
     except requests.exceptions.RequestException as e:
-        print(f"Error unloading model: {str(e)}")
+        print(f"Error unloading vision model: {str(e)}")
         return False
 
 def load_llm_model():
@@ -65,9 +65,9 @@ def segment_caption(video_name, video_path, segment_index2name, transcripts, seg
         QWENVL_API_URL = "http://localhost:8000/generate_caption"
         
         # Load model before processing
-        if not load_model():
-            error_queue.put("Failed to load model")
-            raise RuntimeError("Failed to load model")
+        if not load_vision_model():
+            error_queue.put("Failed to load vision model")
+            raise RuntimeError("Failed to load vision model")
             
         try:
             for index in tqdm(segment_index2name, desc=f"Captioning Video {video_name}"):
@@ -97,7 +97,7 @@ def segment_caption(video_name, video_path, segment_index2name, transcripts, seg
                 caption_result[index] = segment_caption.replace("\n", " ").strip()
         finally:
             # Always unload model after processing
-            unload_model()
+            unload_vision_model()
                 
     except Exception as e:
         error_queue.put(f"Error in segment_caption:\n {str(e)}")
@@ -119,8 +119,8 @@ def retrieved_segment_caption(caption_model, caption_tokenizer, refine_knowledge
     QWENVL_API_URL = "http://localhost:8000/generate_caption"
     
     # Load model before processing
-    if not load_model():
-        print("Failed to load model")
+    if not load_vision_model():
+        print("Failed to load vision model")
         return {}
         
     try:
@@ -158,4 +158,4 @@ def retrieved_segment_caption(caption_model, caption_tokenizer, refine_knowledge
         return caption_result
     finally:
         # Always unload model after processing
-        unload_model()
+        unload_vision_model()
