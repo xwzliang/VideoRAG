@@ -7,33 +7,42 @@ GRAPH_FIELD_SEP = "<SEP>"
 PROMPTS = {}
 
 PROMPTS[
-    "entity_extraction"
-] = """Task: Extract entities and relationships from the given text.
+    "video_caption"
+] = "Provide a detailed description of the video in English, describe each scene and also give the start and end timestamp of each scene in this format: [start_timestamp -> end_timestamp], focusing on the visual content, colors, actions, and important details."
 
-Rules:
-1. Identify all entities with their name, type, and description
-2. Identify relationships between entities with source, target, description, and strength
-3. Use the specified delimiters for formatting
-4. Do not include any code, markdown, or other formatting
-5. Keep descriptions clear and focused
+PROMPTS[
+    "query_video_caption"
+] = """Analyze this video segment and provide detailed information about: {refine_knowledge}. Describe each scene relevant and also give the start and end timestamp of each scene in this format: [start_timestamp -> end_timestamp] Focus on visual details and their connection to the transcript."""
 
-Entity Types: [{entity_types}]
+# PROMPTS[
+#     "entity_extraction"
+# ] = """Task: Extract entities and relationships from the given text.
 
-Format:
-- Entity: ("entity"{tuple_delimiter}<name>{tuple_delimiter}<type>{tuple_delimiter}<description>)
-- Relationship: ("relationship"{tuple_delimiter}<source>{tuple_delimiter}<target>{tuple_delimiter}<description>{tuple_delimiter}<strength>)
+# Rules:
+# 1. Identify all entities with their name, type, and description
+# 2. Identify relationships between entities with source, target, description, and strength
+# 3. Use the specified delimiters for formatting
+# 4. Do not include any code, markdown, or other formatting
+# 5. Keep descriptions clear and focused
+# 6. Do not generate additional examples
+# 7. Stop after processing the given input
 
-Examples:
+# Entity Types: [{entity_types}]
 
-Input: while Alex clenched his jaw, the buzz of frustration dull against the backdrop of Taylor's authoritarian certainty...
-Output:
-("entity"{tuple_delimiter}"Alex"{tuple_delimiter}"person"{tuple_delimiter}"Alex is a character who experiences frustration and is observant of the dynamics among other characters."){record_delimiter}
-("entity"{tuple_delimiter}"Taylor"{tuple_delimiter}"person"{tuple_delimiter}"Taylor is portrayed with authoritarian certainty and shows a moment of reverence towards a device."){record_delimiter}
-("relationship"{tuple_delimiter}"Alex"{tuple_delimiter}"Taylor"{tuple_delimiter}"Alex is affected by Taylor's authoritarian certainty."{tuple_delimiter}7){completion_delimiter}
+# Format:
+# - Entity: ("entity"{tuple_delimiter}<name>{tuple_delimiter}<type>{tuple_delimiter}<description>)
+# - Relationship: ("relationship"{tuple_delimiter}<source>{tuple_delimiter}<target>{tuple_delimiter}<description>{tuple_delimiter}<strength>)
 
-Now process this text:
-Input: {input_text}
-Output:"""
+# Example:
+# Input: while Alex clenched his jaw, the buzz of frustration dull against the backdrop of Taylor's authoritarian certainty...
+# Output:
+# ("entity"{tuple_delimiter}"Alex"{tuple_delimiter}"person"{tuple_delimiter}"Alex is a character who experiences frustration and is observant of the dynamics among other characters."){record_delimiter}
+# ("entity"{tuple_delimiter}"Taylor"{tuple_delimiter}"person"{tuple_delimiter}"Taylor is portrayed with authoritarian certainty and shows a moment of reverence towards a device."){record_delimiter}
+# ("relationship"{tuple_delimiter}"Alex"{tuple_delimiter}"Taylor"{tuple_delimiter}"Alex is affected by Taylor's authoritarian certainty."{tuple_delimiter}7){completion_delimiter}
+
+# Now process this text:
+# Input: {input_text}
+# Output:"""
 
 PROMPTS[
     "summarize_entity_descriptions"
@@ -52,27 +61,27 @@ Description List: {description_list}
 
 Output:"""
 
-PROMPTS[
-    "entiti_continue_extraction"
-] = """Task: Add any missed entities using the same format as before.
+# PROMPTS[
+#     "entiti_continue_extraction"
+# ] = """Task: Add any missed entities using the same format as before.
 
-Rules:
-1. Use the same format as the previous extraction
-2. Only add entities that were missed
-3. Do not include any code, markdown, or other formatting
+# Rules:
+# 1. Use the same format as the previous extraction
+# 2. Only add entities that were missed
+# 3. Do not include any code, markdown, or other formatting
 
-Output:"""
+# Output:"""
 
-PROMPTS[
-    "entiti_if_loop_extraction"
-] = """Task: Determine if there are still entities to be added.
+# PROMPTS[
+#     "entiti_if_loop_extraction"
+# ] = """Task: Determine if there are still entities to be added.
 
-Rules:
-1. Answer with only "YES" or "NO"
-2. Do not include any explanations or additional text
-3. Do not include any code, markdown, or other formatting
+# Rules:
+# 1. Answer with only "YES" or "NO"
+# 2. Do not include any explanations or additional text
+# 3. Do not include any code, markdown, or other formatting
 
-Output:"""
+# Output:"""
 
 PROMPTS["DEFAULT_ENTITY_TYPES"] = ["organization", "person", "geo", "event"]
 PROMPTS["DEFAULT_TUPLE_DELIMITER"] = "<|>"
@@ -132,17 +141,12 @@ Rules:
 2. Do not include any code, markdown, or other formatting
 3. Keep the sentence simple and focused on the main topic
 4. Do not add any explanations or additional text
+5. Do not generate additional examples
+6. Stop after providing the converted sentence
 
-Examples:
-
+Example:
 Input: What are the main characters? \n(A) Alice\n(B) Bob\n(C) Charlie\n(D) Dana
 Output: The main characters in the story.
-
-Input: What locations are shown in the video?
-Output: The locations shown in the video.
-
-Input: Which animals appear in the wildlife footage? \n(A) Lions\n(B) Elephants\n(C) Zebras
-Output: The animals that appear in the wildlife footage.
 
 Now convert this question:
 Input: {input_text}
@@ -155,22 +159,19 @@ PROMPTS[
 ] = """Task: Convert the question into a declarative sentence for video segment retrieval.
 
 Rules:
+0. Do not show your thinking process, give the answer directly
 1. Focus on scene-related information
 2. Keep the sentence simple and clear
 3. Include key visual elements
 4. Do not include any code, markdown, or other formatting
 5. Do not add explanations or additional text
+6. Do not generate additional examples
+7. Stop after providing the converted sentence
+8. Do not show your thinking process, give the answer directly
 
-Examples:
-
+Example:
 Input: Which animal does the protagonist encounter in the forest scene?
 Output: The protagonist encounters an animal in the forest.
-
-Input: In the movie, what color is the car that chases the main character through the city?
-Output: A city chase scene where the main character is pursued by a car.
-
-Input: What is the weather like during the opening scene of the film?\n(A) Sunny\n(B) Rainy\n(C) Snowy\n(D) Windy
-Output: The opening scene of the film featuring specific weather conditions.
 
 Now convert this question:
 Input: {input_text}
@@ -180,24 +181,26 @@ Output:"""
 
 PROMPTS[
     "keywords_extraction"
-] = """Task: Extract key terms from the question.
+] = """Task: Extract keywords from the question.
 
 Rules:
-1. Output only a comma-separated list of keywords
+1. Output ONLY a comma-separated list of keywords
 2. Include all essential terms
 3. Do not include any code, markdown, or other formatting
 4. Do not add explanations or additional text
+5. Do not output JSON, code blocks, or any structured data
+6. Do not include any special characters except commas
+7. Each keyword should be a single word or short phrase
+8. Do not include any metadata or additional information
+9. Do not generate additional examples
+10. Do not show your thinking process
+11. Do not include any words like "Keywords:" or "Output:"
+12. Stop after providing the keywords for the given input
+13. The output must be a single line of comma-separated keywords
 
-Examples:
-
+Example:
 Input: Which animal does the protagonist encounter in the forest scene?
 Output: animal, protagonist, forest, scene
-
-Input: In the movie, what color is the car that chases the main character through the city?
-Output: color, car, chases, main character, city
-
-Input: What is the weather like during the opening scene of the film?\n(A) Sunny\n(B) Rainy\n(C) Snowy\n(D) Windy
-Output: weather, opening scene, film, Sunny, Rainy, Snowy, Windy
 
 Now extract keywords from:
 Input: {input_text}

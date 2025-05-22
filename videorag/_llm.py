@@ -307,6 +307,12 @@ azure_openai_config = LLMConfig(
 
 ######  Ollama configuration
 
+def clean_response_text(text: str) -> str:
+    """Clean up response text by removing unwanted markers and thinking process."""
+    if "</think>\n" in text:
+        return text.split("</think>\n")[-1].strip()
+    return text.strip()
+
 async def ollama_complete_if_cache(
     prompt: str,
     model_name: str = "deepseek-coder",
@@ -320,13 +326,12 @@ async def ollama_complete_if_cache(
     retry_delay: float = 2.0,  # Increased from 1.0
 ) -> str:
     """Complete a prompt using DeepSeek service with caching and retry logic."""
-    print(f"===============ollama_complete_if_cache called with prompt: {prompt}")
     # Check cache first
     if hashing_kv is not None and use_cache:
         cache_key = f"{model_name}:{prompt}:{system_prompt}:{json.dumps(history_messages) if history_messages else ''}"
         cached_response = await hashing_kv.get_by_id(cache_key)
         if cached_response is not None:
-            return cached_response
+            return clean_response_text(cached_response)
 
     # Format the prompt
     formatted_prompt = prompt
@@ -339,7 +344,9 @@ async def ollama_complete_if_cache(
     data = {
         "model": "DeepSeek-R1",  # Use the correct model name
         "prompt": formatted_prompt,
-        "stream": True
+        "stream": True,
+        "temperature": temperature,
+        "max_tokens": max_tokens
     }
 
     # Log request details
@@ -348,10 +355,10 @@ async def ollama_complete_if_cache(
     logger.info(f"Formatted prompt: {formatted_prompt}")
     logger.info(f"Full request data: {json.dumps(data, indent=2)}")
 
-    # Retry logic
     for attempt in range(max_retries):
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            # Create client with increased timeout to match server's 20-minute timeout
+            async with httpx.AsyncClient(timeout=1200.0) as client:  # 20 minutes
                 response = await client.post(
                     "http://localhost:8001/api/generate",
                     json=data,
@@ -369,11 +376,23 @@ async def ollama_complete_if_cache(
                         try:
                             chunk = json.loads(line)
                             if "response" in chunk:
-                                full_response += chunk["response"]
+                                # Only append if it's not a JSON object
+                                if not (chunk["response"].startswith("{") and chunk["response"].endswith("}")):
+                                    full_response += chunk["response"]
                         except json.JSONDecodeError:
                             continue
                 
-                response_text = full_response.strip()
+                response_text = clean_response_text(full_response.strip())
+                
+                # Validate response
+                # if not response_text or len(response_text) < 2:
+                #     raise ValueError("Empty or too short response received")
+                
+                # Check if response contains JSON-like content
+                if (response_text.startswith("{") and response_text.endswith("}")) or \
+                   (response_text.startswith("[") and response_text.endswith("]")):
+                    raise ValueError("Response contains unexpected JSON content")
+                
                 logger.info(f"Received response from DeepSeek:\n{response_text}")
                 
                 # Cache the response
@@ -386,15 +405,14 @@ async def ollama_complete_if_cache(
             if attempt < max_retries - 1:
                 logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {retry_delay} seconds...")
                 await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-            else:
-                error_msg = f"Failed to get response from DeepSeek service after {max_retries} attempts: {str(e)}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
         except Exception as e:
             error_msg = f"Unexpected error during DeepSeek request: {str(e)}"
             logger.error(error_msg)
-            raise
+            if attempt < max_retries - 1:
+                logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+            else:
+                raise
 
 async def ollama_mini_complete(
     model_name: str,

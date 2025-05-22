@@ -5,6 +5,8 @@ import asyncio
 import tiktoken
 from typing import Union
 from collections import Counter, defaultdict
+
+from videorag._videoutil.caption import load_llm_model
 from ._splitter import SeparatorSplitter
 from ._utils import (
     logger,
@@ -371,7 +373,7 @@ async def extract_entities(
         completion_delimiter=PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
         entity_types=",".join(PROMPTS["DEFAULT_ENTITY_TYPES"]),
     )
-    continue_prompt = PROMPTS["entiti_continue_extraction"]
+    # continue_prompt = PROMPTS["entiti_continue_extraction"]
     if_loop_prompt = PROMPTS["entiti_if_loop_extraction"]
 
     already_processed = 0
@@ -387,20 +389,21 @@ async def extract_entities(
         final_result = await use_llm_func(hint_prompt)
 
         history = pack_user_ass_to_openai_messages(hint_prompt, final_result)
-        for now_glean_index in range(entity_extract_max_gleaning):
-            glean_result = await use_llm_func(continue_prompt, history_messages=history)
+        # Commenting out the entity extraction loop since we don't want to use continue_prompt
+        # for now_glean_index in range(entity_extract_max_gleaning):
+        #     glean_result = await use_llm_func(continue_prompt, history_messages=history)
 
-            history += pack_user_ass_to_openai_messages(continue_prompt, glean_result)
-            final_result += glean_result
-            if now_glean_index == entity_extract_max_gleaning - 1:
-                break
+        #     history += pack_user_ass_to_openai_messages(continue_prompt, glean_result)
+        #     final_result += glean_result
+        #     if now_glean_index == entity_extract_max_gleaning - 1:
+        #         break
 
-            if_loop_result: str = await use_llm_func(
-                if_loop_prompt, history_messages=history
-            )
-            if_loop_result = if_loop_result.strip().strip('"').strip("'").lower()
-            if if_loop_result != "yes":
-                break
+        #     if_loop_result: str = await use_llm_func(
+        #         if_loop_prompt, history_messages=history
+        #     )
+        #     if_loop_result = if_loop_result.strip().strip('"').strip("'").lower()
+        #     if if_loop_result != "yes":
+        #         break
 
         records = split_string_by_multi_markers(
             final_result,
@@ -616,31 +619,31 @@ async def videorag_query(
     section = "-----New Chunk-----\n".join([c["content"] for c in maybe_trun_chunks])
     retreived_chunk_context = section
     
-    # visual retrieval
-    query_for_entity_retrieval = await _refine_entity_retrieval_query(
-        query,
-        query_param,
-        global_config,
-    )
-    entity_results = await entities_vdb.query(query_for_entity_retrieval, top_k=query_param.top_k)
+    # Commenting out entity extraction and retrieval
+    # query_for_entity_retrieval = await _refine_entity_retrieval_query(
+    #     query,
+    #     query_param,
+    #     global_config,
+    # )
+    # entity_results = await entities_vdb.query(query_for_entity_retrieval, top_k=query_param.top_k)
     entity_retrieved_segments = set()
-    if len(entity_results):
-        node_datas = await asyncio.gather(
-            *[knowledge_graph_inst.get_node(r["entity_name"]) for r in entity_results]
-        )
-        if not all([n is not None for n in node_datas]):
-            logger.warning("Some nodes are missing, maybe the storage is damaged")
-        node_degrees = await asyncio.gather(
-            *[knowledge_graph_inst.node_degree(r["entity_name"]) for r in entity_results]
-        )
-        node_datas = [
-            {**n, "entity_name": k["entity_name"], "rank": d}
-            for k, n, d in zip(entity_results, node_datas, node_degrees)
-            if n is not None
-        ]
-        entity_retrieved_segments = entity_retrieved_segments.union(await _find_most_related_segments_from_entities(
-            global_config["retrieval_topk_chunks"], node_datas, text_chunks_db, knowledge_graph_inst
-        ))
+    # if len(entity_results):
+    #     node_datas = await asyncio.gather(
+    #         *[knowledge_graph_inst.get_node(r["entity_name"]) for r in entity_results]
+    #     )
+    #     if not all([n is not None for n in node_datas]):
+    #         logger.warning("Some nodes are missing, maybe the storage is damaged")
+    #     node_degrees = await asyncio.gather(
+    #         *[knowledge_graph_inst.node_degree(r["entity_name"]) for r in entity_results]
+    #     )
+    #     node_datas = [
+    #         {**n, "entity_name": k["entity_name"], "rank": d}
+    #         for k, n, d in zip(entity_results, node_datas, node_degrees)
+    #         if n is not None
+    #     ]
+    #     entity_retrieved_segments = entity_retrieved_segments.union(await _find_most_related_segments_from_entities(
+    #         global_config["retrieval_topk_chunks"], node_datas, text_chunks_db, knowledge_graph_inst
+    #     ))
     
     # visual retrieval
     query_for_visual_retrieval = await _refine_visual_retrieval_query(
@@ -655,7 +658,8 @@ async def videorag_query(
             visual_retrieved_segments.add(n['__id__'])
     
     # caption
-    retrieved_segments = list(entity_retrieved_segments.union(visual_retrieved_segments))
+    # retrieved_segments = list(entity_retrieved_segments.union(visual_retrieved_segments))
+    retrieved_segments = list(visual_retrieved_segments)  # Only use visual segments
     retrieved_segments = sorted(
         retrieved_segments,
         key=lambda x: (
@@ -663,8 +667,8 @@ async def videorag_query(
             eval(x.split('_')[-1]) # index
         )
     )
-    print(query_for_entity_retrieval)
-    print(f"Retrieved Text Segments {entity_retrieved_segments}")
+    # print(query_for_entity_retrieval)
+    # print(f"Retrieved Text Segments {entity_retrieved_segments}")
     print(query_for_visual_retrieval)
     print(f"Retrieved Visual Segments {visual_retrieved_segments}")
     
@@ -743,6 +747,9 @@ async def videorag_query(
         chunk_data=retreived_chunk_context,
         response_type=query_param.response_type
     )
+    # Load LLM model for processing
+    if not load_llm_model():
+        raise RuntimeError("Failed to load DeepSeek model for processing")
     response = await use_model_func(
         query,
         system_prompt=sys_prompt,
@@ -771,7 +778,6 @@ async def videorag_query_multiple_choice(
     
     # naive chunks
     results = await chunks_vdb.query(query, top_k=query_param.top_k)
-    # NOTE: I update here, not len results can also process
     if len(results):
         chunks_ids = [r["id"] for r in results]
         chunks = await text_chunks_db.get_by_ids(chunks_ids)
@@ -792,31 +798,31 @@ async def videorag_query_multiple_choice(
     else:
         retreived_chunk_context = "No Content"
         
-    # visual retrieval
-    query_for_entity_retrieval = await _refine_entity_retrieval_query(
-        query,
-        query_param,
-        global_config,
-    )
-    entity_results = await entities_vdb.query(query_for_entity_retrieval, top_k=query_param.top_k)
+    # Commenting out entity extraction and retrieval
+    # query_for_entity_retrieval = await _refine_entity_retrieval_query(
+    #     query,
+    #     query_param,
+    #     global_config,
+    # )
+    # entity_results = await entities_vdb.query(query_for_entity_retrieval, top_k=query_param.top_k)
     entity_retrieved_segments = set()
-    if len(entity_results):
-        node_datas = await asyncio.gather(
-            *[knowledge_graph_inst.get_node(r["entity_name"]) for r in entity_results]
-        )
-        if not all([n is not None for n in node_datas]):
-            logger.warning("Some nodes are missing, maybe the storage is damaged")
-        node_degrees = await asyncio.gather(
-            *[knowledge_graph_inst.node_degree(r["entity_name"]) for r in entity_results]
-        )
-        node_datas = [
-            {**n, "entity_name": k["entity_name"], "rank": d}
-            for k, n, d in zip(entity_results, node_datas, node_degrees)
-            if n is not None
-        ]
-        entity_retrieved_segments = entity_retrieved_segments.union(await _find_most_related_segments_from_entities(
-            global_config["retrieval_topk_chunks"], node_datas, text_chunks_db, knowledge_graph_inst
-        ))
+    # if len(entity_results):
+    #     node_datas = await asyncio.gather(
+    #         *[knowledge_graph_inst.get_node(r["entity_name"]) for r in entity_results]
+    #     )
+    #     if not all([n is not None for n in node_datas]):
+    #         logger.warning("Some nodes are missing, maybe the storage is damaged")
+    #     node_degrees = await asyncio.gather(
+    #         *[knowledge_graph_inst.node_degree(r["entity_name"]) for r in entity_results]
+    #     )
+    #     node_datas = [
+    #         {**n, "entity_name": k["entity_name"], "rank": d}
+    #         for k, n, d in zip(entity_results, node_datas, node_degrees)
+    #         if n is not None
+    #     ]
+    #     entity_retrieved_segments = entity_retrieved_segments.union(await _find_most_related_segments_from_entities(
+    #         global_config["retrieval_topk_chunks"], node_datas, text_chunks_db, knowledge_graph_inst
+    #     ))
     
     # visual retrieval
     query_for_visual_retrieval = await _refine_visual_retrieval_query(
@@ -831,7 +837,8 @@ async def videorag_query_multiple_choice(
             visual_retrieved_segments.add(n['__id__'])
     
     # caption
-    retrieved_segments = list(entity_retrieved_segments.union(visual_retrieved_segments))
+    # retrieved_segments = list(entity_retrieved_segments.union(visual_retrieved_segments))
+    retrieved_segments = list(visual_retrieved_segments)  # Only use visual segments
     retrieved_segments = sorted(
         retrieved_segments,
         key=lambda x: (
@@ -839,8 +846,8 @@ async def videorag_query_multiple_choice(
             eval(x.split('_')[-1]) # index
         )
     )
-    print(query_for_entity_retrieval)
-    print(f"Retrieved Text Segments {entity_retrieved_segments}")
+    # print(query_for_entity_retrieval)
+    # print(f"Retrieved Text Segments {entity_retrieved_segments}")
     print(query_for_visual_retrieval)
     print(f"Retrieved Visual Segments {visual_retrieved_segments}")
     

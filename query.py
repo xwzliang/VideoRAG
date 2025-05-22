@@ -21,7 +21,8 @@ local_model_config.cheap_model_name = "deepseek-coder"  # Using same model for b
 if __name__ == '__main__':
     multiprocessing.set_start_method('spawn')
 
-    query = 'What is the relationship between the girl and the headmistress?'
+    # query = 'What is the relationship between the girl and the headmistress?'
+    query = "Is there a scene inside a car? If so, what is the start and end timestamp of this scene? what's the color of the car's internal decoration?"
     param = QueryParam(mode="videorag")
     # if param.wo_reference = False, VideoRAG will add reference to video clips in the response
     param.wo_reference = True
@@ -31,8 +32,8 @@ if __name__ == '__main__':
     # Set Qwen-VL model to be loaded via REST API
     videorag.caption_model = "Qwen/Qwen-VL-Chat"  # This will be loaded via REST API when needed
     
-    # response = videorag.query(query=query, param=param)
+    response = videorag.query(query=query, param=param)
 
-    response = videorag.regenerate_query(query=query, param=param)
+    # response = videorag.regenerate_query(query=query, param=param)
 
     print(response)

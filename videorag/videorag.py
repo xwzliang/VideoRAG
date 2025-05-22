@@ -93,7 +93,7 @@ class VideoRAG:
         ],
         List[Dict[str, Union[str, int]]],
     ] = chunking_by_video_segments
-    chunk_token_size: int = 1200
+    chunk_token_size: int = 4096
     # chunk_overlap_token_size: int = 100
     tiktoken_model_name: str = "gpt-4o"
 
@@ -360,15 +360,15 @@ class VideoRAG:
             return response
         finally:
             # Always unload the model after processing
-            unload_llm_model()
+            # unload_llm_model()
             pass
 
     async def ainsert(self, new_video_segment):
         await self._insert_start()
         try:
             # Load DeepSeek model for entity extraction
-            if not load_llm_model():
-                raise RuntimeError("Failed to load DeepSeek model for entity extraction")
+            # if not load_llm_model():
+            #     raise RuntimeError("Failed to load DeepSeek model for entity extraction")
             
             try:
                 # ---------- chunking
@@ -391,23 +391,24 @@ class VideoRAG:
                     logger.info("Insert chunks for naive RAG")
                     await self.chunks_vdb.upsert(inserting_chunks)
 
-                # ---------- extract/summary entity and upsert to graph
-                logger.info("[Entity Extraction]...")
-                maybe_new_kg, _, _ = await self.entity_extraction_func(
-                    inserting_chunks,
-                    knowledge_graph_inst=self.chunk_entity_relation_graph,
-                    entity_vdb=self.entities_vdb,
-                    global_config=asdict(self),
-                )
-                if maybe_new_kg is None:
-                    logger.warning("No new entities found")
-                    return
-                self.chunk_entity_relation_graph = maybe_new_kg
+                # ---------- Commenting out entity extraction
+                # logger.info("[Entity Extraction]...")
+                # maybe_new_kg, _, _ = await self.entity_extraction_func(
+                #     inserting_chunks,
+                #     knowledge_graph_inst=self.chunk_entity_relation_graph,
+                #     entity_vdb=self.entities_vdb,
+                #     global_config=asdict(self),
+                # )
+                # if maybe_new_kg is None:
+                #     logger.warning("No new entities found")
+                #     return
+                # self.chunk_entity_relation_graph = maybe_new_kg
                 # ---------- commit upsertings and indexing
                 await self.text_chunks.upsert(inserting_chunks)
             finally:
                 # Always unload the model after processing
-                unload_llm_model()
+                # unload_llm_model()
+                pass
         finally:
             await self._insert_done()
 

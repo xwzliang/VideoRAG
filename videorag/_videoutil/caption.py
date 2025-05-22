@@ -6,10 +6,13 @@ from tqdm import tqdm
 import requests
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import gc
-
+from videorag.prompt import PROMPTS
 def load_vision_model():
     """Request server to load the vision model."""
     try:
+        # First unload LLM model to free up resources
+        unload_llm_model()
+        
         response = requests.post("http://localhost:8000/load_model")
         response.raise_for_status()
         return True
@@ -32,6 +35,9 @@ def unload_vision_model():
 def load_llm_model():
     """Request server to load the DeepSeek model for LLM tasks."""
     try:
+        # First unload vision model to free up resources
+        unload_vision_model()
+        
         response = requests.post("http://localhost:8002/load_model")
         response.raise_for_status()
         return True
@@ -81,8 +87,8 @@ def segment_caption(video_name, video_path, segment_index2name, transcripts, seg
                     "start_time": float(start_time),
                     "end_time": float(end_time),
                     "transcript": segment_transcript,
-                    "query": "Provide a detailed description of the video in English, focusing on the visual content, actions, and important details.",
-                    "fps": 2.0  # Adjust based on your needs
+                    "query": PROMPTS["video_caption"],
+                    "fps": 3.0  # Adjust based on your needs
                 }
                 
                 # Make request to Qwen-VL API
@@ -95,9 +101,9 @@ def segment_caption(video_name, video_path, segment_index2name, transcripts, seg
                     raise RuntimeError
                 
                 caption_result[index] = segment_caption.replace("\n", " ").strip()
-        finally:
-            # Always unload model after processing
-            unload_vision_model()
+        except Exception as e:
+            error_queue.put(f"Error in segment_caption:\n {str(e)}")
+            raise RuntimeError
                 
     except Exception as e:
         error_queue.put(f"Error in segment_caption:\n {str(e)}")
@@ -140,7 +146,7 @@ def retrieved_segment_caption(caption_model, caption_tokenizer, refine_knowledge
                 "start_time": float(start_time),
                 "end_time": float(end_time),
                 "transcript": segment_transcript,
-                "query": f"Analyze this video segment and provide detailed information about: {refine_knowledge}. Focus on visual details and their connection to the transcript.",
+                "query": PROMPTS["query_video_caption"].format(refine_knowledge=refine_knowledge),
                 "fps": 5.0  # Adjust based on your needs
             }
             
@@ -156,6 +162,6 @@ def retrieved_segment_caption(caption_model, caption_tokenizer, refine_knowledge
             caption_result[this_segment] = f"Caption:\n{this_caption}\nTranscript:\n{segment_transcript}\n\n"
             
         return caption_result
-    finally:
-        # Always unload model after processing
-        unload_vision_model()
+    except Exception as e:
+        print(f"Error in retrieved_segment_caption: {str(e)}")
+        return {}
