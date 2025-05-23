@@ -383,7 +383,7 @@ class VideoRAG:
                     logger.info(f"Debug - has_audio_segments: {has_audio_segments}")
                     logger.info(f"Debug - has_video_segments: {has_video_segments}")
                     logger.info(f"No valid segments found in cache for {video_name}, proceeding with video split...")
-                    segment_index2name, segment_times_info = split_video(
+                    segment_index2name, segment_times_info = save_audio_segments(
                         video_path, 
                         self.working_dir, 
                         self.video_segment_length,
@@ -392,11 +392,11 @@ class VideoRAG:
                     )
                 else:
                     logger.info(f"Found {len(processed_segments)} segments in cache for {video_name} ({len(segment_index2name)} video segments, {len(processed_segments) - len(segment_index2name)} audio segments)")
-                    # No need to call split_video here since we already have the segments
+                    # No need to call save_audio_segments here since we already have the segments
                     # The segment_index2name and segment_times_info are already populated from the cache
             else:
                 logger.info(f"No existing segments found for {video_name}, splitting video...")
-                segment_index2name, segment_times_info = split_video(
+                segment_index2name, segment_times_info = save_audio_segments(
                     video_path, 
                     self.working_dir, 
                     self.video_segment_length,
@@ -629,6 +629,10 @@ class VideoRAG:
                 {video_name: segments_information}
             ))
             
+            # Unload vision model before loading imagebind
+            if not unload_vision_model():
+                print("Failed to unload vision model")
+                return []
             try:
                 # Step5: encode video segment features
                 loop.run_until_complete(self.video_segment_feature_vdb.upsert(
@@ -641,9 +645,9 @@ class VideoRAG:
                 logger.info("Continuing with available data...")
             
             # Step6: delete the cache file
-            video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
-            if os.path.exists(video_segment_cache_path):
-                shutil.rmtree(video_segment_cache_path)
+            # video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
+            # if os.path.exists(video_segment_cache_path):
+            #     shutil.rmtree(video_segment_cache_path)
             
             # Step 7: saving current video information
             loop.run_until_complete(self._save_video_segments())
