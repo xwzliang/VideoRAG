@@ -65,7 +65,7 @@ def encode_video(video, frame_times):
     frames = [Image.fromarray(v.astype('uint8')).resize((1280, 720)) for v in frames]
     return frames
     
-def segment_caption(video_name, video_path, segment_index2name, transcripts, segment_times_info, caption_result, error_queue):
+async def segment_caption(video_name, video_path, segment_index2name, transcripts, segment_times_info, caption_result, error_queue, working_dir):
     try:
         # Qwen-VL API endpoint
         QWENVL_API_URL = "http://localhost:8000/generate_caption"
@@ -76,7 +76,28 @@ def segment_caption(video_name, video_path, segment_index2name, transcripts, seg
             raise RuntimeError("Failed to load vision model")
             
         try:
-            for index in tqdm(segment_index2name, desc=f"Captioning Video {video_name}"):
+            # Load existing captions from storage
+            from .._storage import JsonKVStorage
+            from .._utils import logger
+            
+            # Initialize storage for captions with working directory
+            caption_storage = JsonKVStorage(namespace="video_captions", global_config={"working_dir": working_dir})
+            
+            # Check which segments already have captions
+            cached_captions = caption_storage._data.get(video_name, {})
+            logger.info(f"Found {len(cached_captions)} cached captions for {video_name}")
+            
+            # Sort segments by index
+            sorted_segments = sorted(segment_index2name.keys(), key=int)
+            logger.info(f"Processing {len(sorted_segments)} segments in order")
+            
+            for index in tqdm(sorted_segments, desc=f"Captioning Video {video_name}"):
+                # Skip if we already have a caption for this segment
+                if str(index) in cached_captions:
+                    logger.info(f"Using cached caption for segment {index}")
+                    caption_result[index] = cached_captions[str(index)]
+                    continue
+                
                 segment_transcript = transcripts[index]
                 start_time = segment_times_info[index]["frame_times"][0]
                 end_time = segment_times_info[index]["frame_times"][-1]
@@ -96,11 +117,21 @@ def segment_caption(video_name, video_path, segment_index2name, transcripts, seg
                     response = requests.post(QWENVL_API_URL, json=request_data)
                     response.raise_for_status()
                     segment_caption = response.json()["caption"]
+                    
+                    # Cache the caption immediately
+                    if video_name not in caption_storage._data:
+                        caption_storage._data[video_name] = {}
+                    caption_storage._data[video_name][str(index)] = segment_caption
+                    logger.info(f"Saving caption for segment {index} to storage")
+                    await caption_storage.index_done_callback()
+                    logger.info(f"Successfully saved caption for segment {index}")
+                    
+                    caption_result[index] = segment_caption.replace("\n", " ").strip()
+                    logger.info(f"Generated and cached caption for segment {index}")
                 except requests.exceptions.RequestException as e:
                     error_queue.put(f"Error calling Qwen-VL API:\n {str(e)}")
                     raise RuntimeError
                 
-                caption_result[index] = segment_caption.replace("\n", " ").strip()
         except Exception as e:
             error_queue.put(f"Error in segment_caption:\n {str(e)}")
             raise RuntimeError

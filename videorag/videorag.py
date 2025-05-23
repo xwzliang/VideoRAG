@@ -11,6 +11,11 @@ from typing import Callable, Dict, List, Optional, Type, Union, cast
 from transformers import AutoModel, AutoTokenizer
 import tiktoken
 import requests
+from moviepy.editor import VideoFileClip
+import time
+import numpy as np
+from tqdm import tqdm
+from pydub import AudioSegment
 
 
 from ._llm import (
@@ -49,7 +54,7 @@ from .base import (
     QueryParam,
 )
 from ._videoutil import(
-    split_video,
+    save_audio_segments,
     speech_to_text,
     segment_caption,
     merge_segment_information,
@@ -128,6 +133,7 @@ class VideoRAG:
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)
 
+        # Initialize storage instances
         self.video_path_db = self.key_string_value_json_storage_cls(
             namespace="video_path", global_config=asdict(self)
         )
@@ -195,6 +201,60 @@ class VideoRAG:
         self.caption_model = None
         self.caption_tokenizer = None
 
+        # Load cached data if it exists
+        self._load_cached_data()
+
+    def _load_cached_data(self):
+        """Load cached data from storage if it exists."""
+        try:
+            # Load video path data
+            if hasattr(self.video_path_db, '_data') and self.video_path_db._data:
+                logger.info("Loading cached video path data...")
+                if hasattr(self.video_path_db, 'load'):
+                    self.video_path_db.load()
+
+            # Load video segments data
+            if hasattr(self.video_segments, '_data') and self.video_segments._data:
+                logger.info("Loading cached video segments data...")
+                if hasattr(self.video_segments, 'load'):
+                    self.video_segments.load()
+
+            # Load text chunks data
+            if hasattr(self.text_chunks, '_data') and self.text_chunks._data:
+                logger.info("Loading cached text chunks data...")
+                if hasattr(self.text_chunks, 'load'):
+                    self.text_chunks.load()
+
+            # Load LLM response cache if enabled
+            if self.enable_llm_cache and hasattr(self.llm_response_cache, '_data') and self.llm_response_cache._data:
+                logger.info("Loading cached LLM responses...")
+                if hasattr(self.llm_response_cache, 'load'):
+                    self.llm_response_cache.load()
+
+            # Load entity graph data
+            if hasattr(self.chunk_entity_relation_graph, '_graph') and self.chunk_entity_relation_graph._graph:
+                logger.info("Loading cached entity graph data...")
+                if hasattr(self.chunk_entity_relation_graph, 'load'):
+                    self.chunk_entity_relation_graph.load()
+
+            # Load vector database data
+            if self.enable_local and hasattr(self.entities_vdb, 'load'):
+                logger.info("Loading cached entity vector database...")
+                self.entities_vdb.load()
+
+            if self.enable_naive_rag and hasattr(self.chunks_vdb, 'load'):
+                logger.info("Loading cached chunks vector database...")
+                self.chunks_vdb.load()
+
+            if hasattr(self.video_segment_feature_vdb, 'load'):
+                logger.info("Loading cached video segment features...")
+                self.video_segment_feature_vdb.load()
+
+            logger.info("Successfully loaded all cached data")
+        except Exception as e:
+            logger.error(f"Error loading cached data: {str(e)}")
+            logger.info("Continuing without cached data...")
+
     def load_caption_model(self, debug=False):
         # caption model
         if not debug:
@@ -218,71 +278,343 @@ class VideoRAG:
             # Step0: check the existence
             video_name = os.path.basename(video_path).split('.')[0]
             if video_name in self.video_segments._data:
-                logger.info(f"Find the video named {os.path.basename(video_path)} in storage and skip it.")
-                continue
+                logger.info(f"Find the video named {os.path.basename(video_path)} in storage.")
+                # Check if we have all necessary data (transcripts and captions)
+                current_data = self.video_segments._data.get(video_name, {})
+                has_all_data = True
+                for index in current_data:
+                    if "transcript" not in current_data[index] or "content" not in current_data[index]:
+                        has_all_data = False
+                        break
+                
+                if has_all_data:
+                    logger.info(f"Video {video_name} has all necessary data (transcripts and captions), skipping processing.")
+                    continue
+                else:
+                    logger.info(f"Video {video_name} found but missing some data, proceeding with processing...")
+                    # If we have transcripts but missing captions, use the cached transcripts
+                    if all("transcript" in current_data[index] for index in current_data):
+                        logger.info(f"Using cached transcripts for {video_name}")
+                        transcripts = {index: current_data[index]["transcript"] for index in current_data}
+                    else:
+                        transcripts = None
+            else:
+                transcripts = None
+                
             loop.run_until_complete(self.video_path_db.upsert(
                 {video_name: video_path}
             ))
             
-            # Step1: split the videos
-            segment_index2name, segment_times_info = split_video(
-                video_path, 
-                self.working_dir, 
-                self.video_segment_length,
-                self.rough_num_frames_per_segment,
-                self.audio_output_format,
-            )
+            # Check if video segments already exist in the working directory
+            video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
+            if os.path.exists(video_segment_cache_path):
+                logger.info(f"Found existing video segments for {video_name}, loading from cache...")
+                # Load existing segment information
+                segment_index2name = {}
+                segment_times_info = {}
+                has_video_segments = False
+                has_audio_segments = False
+                processed_segments = set()  # Track all processed segment indices
+                
+                for segment_file in os.listdir(video_segment_cache_path):
+                    try:
+                        # Try different filename formats
+                        if segment_file.endswith(f'.{self.video_output_format}'):
+                            has_video_segments = True
+                            # Try to extract segment index from filename
+                            # Format: timestamp-segment-start-end.mp4
+                            try:
+                                # Extract the segment number (second number in the filename)
+                                parts = segment_file.split('.')[0].split('-')
+                                if len(parts) >= 4:  # timestamp-segment-start-end
+                                    segment_index = int(parts[1])
+                                    start_time = int(parts[2])
+                                    end_time = int(parts[3])
+                                    segment_index2name[segment_index] = segment_file
+                                    # Calculate frame times for the segment
+                                    frame_times = np.linspace(start_time, end_time, self.rough_num_frames_per_segment, endpoint=False)
+                                    segment_times_info[segment_index] = {
+                                        'timestamp': [start_time, end_time],
+                                        'duration': end_time - start_time,
+                                        'frame_times': frame_times
+                                    }
+                                    processed_segments.add(segment_index)
+                                else:
+                                    logger.warning(f"Unexpected filename format: {segment_file}")
+                                    continue
+                            except (IndexError, ValueError) as e:
+                                logger.warning(f"Could not parse segment index from filename: {segment_file}, error: {str(e)}")
+                                continue
+                            
+                        elif segment_file.endswith(f'.{self.audio_output_format}'):
+                            has_audio_segments = True
+                            # Try to extract segment index from filename
+                            # Format: timestamp-segment-start-end.mp3
+                            try:
+                                # Extract the segment number (second number in the filename)
+                                parts = segment_file.split('.')[0].split('-')
+                                if len(parts) >= 4:  # timestamp-segment-start-end
+                                    segment_index = int(parts[1])
+                                    start_time = int(parts[2])
+                                    end_time = int(parts[3])
+                                    # Add to segment_index2name for speech recognition
+                                    segment_index2name[segment_index] = os.path.splitext(os.path.basename(segment_file))[0]
+                                    if segment_index not in segment_times_info:
+                                        # Calculate frame times for the segment
+                                        frame_times = np.linspace(start_time, end_time, self.rough_num_frames_per_segment, endpoint=False)
+                                        segment_times_info[segment_index] = {
+                                            'timestamp': [start_time, end_time],
+                                            'duration': end_time - start_time,
+                                            'frame_times': frame_times
+                                        }
+                                    processed_segments.add(segment_index)
+                                else:
+                                    logger.warning(f"Unexpected filename format: {segment_file}")
+                                    continue
+                            except (IndexError, ValueError) as e:
+                                logger.warning(f"Could not parse segment index from filename: {segment_file}, error: {str(e)}")
+                                continue
+                    except Exception as e:
+                        logger.warning(f"Error processing file {segment_file}: {str(e)}")
+                        continue
+                
+                if not (has_video_segments or has_audio_segments):
+                    logger.info(f"Debug - has_audio_segments: {has_audio_segments}")
+                    logger.info(f"Debug - has_video_segments: {has_video_segments}")
+                    logger.info(f"No valid segments found in cache for {video_name}, proceeding with video split...")
+                    segment_index2name, segment_times_info = split_video(
+                        video_path, 
+                        self.working_dir, 
+                        self.video_segment_length,
+                        self.rough_num_frames_per_segment,
+                        self.audio_output_format
+                    )
+                else:
+                    logger.info(f"Found {len(processed_segments)} segments in cache for {video_name} ({len(segment_index2name)} video segments, {len(processed_segments) - len(segment_index2name)} audio segments)")
+                    # No need to call split_video here since we already have the segments
+                    # The segment_index2name and segment_times_info are already populated from the cache
+            else:
+                logger.info(f"No existing segments found for {video_name}, splitting video...")
+                segment_index2name, segment_times_info = split_video(
+                    video_path, 
+                    self.working_dir, 
+                    self.video_segment_length,
+                    self.rough_num_frames_per_segment,
+                    self.audio_output_format
+                )
+            
+            # Save split information
+            loop.run_until_complete(self.video_segments.upsert(
+                {video_name: {index: {"time": f"{info['timestamp'][0]}-{info['timestamp'][1]}"} for index, info in segment_times_info.items()}}
+            ))
             
             # Step2: obtain transcript with whisper
-            transcripts = speech_to_text(
-                video_name, 
-                self.working_dir, 
-                segment_index2name,
-                self.audio_output_format
-            )
+            if transcripts is None:
+                logger.info(f"No cached transcripts found for {video_name}, running speech recognition...")
+                transcripts = speech_to_text(
+                    video_name, 
+                    self.working_dir, 
+                    segment_index2name,
+                    self.audio_output_format
+                )
+                # Save transcripts immediately after speech recognition
+                current_data = self.video_segments._data.get(video_name, {})
+                logger.info(f"Debug - Number of transcripts generated: {len(transcripts)}")
+                logger.info(f"Debug - Number of segments in current_data: {len(current_data)}")
+                
+                for index, transcript in transcripts.items():
+                    if index in current_data:
+                        current_data[index]["transcript"] = transcript
+                        logger.info(f"Debug - Saved transcript for segment {index}")
+                    else:
+                        logger.warning(f"Debug - Segment {index} not found in current_data")
+                
+                # Sort segments by index before saving
+                sorted_data = {}
+                for index in sorted(current_data.keys(), key=int):
+                    sorted_data[index] = current_data[index]
+                
+                # Save to memory and disk
+                logger.info(f"Debug - Saving {len(sorted_data)} segments with transcripts")
+                loop.run_until_complete(self.video_segments.upsert({video_name: sorted_data}))
+                loop.run_until_complete(self.video_segments.index_done_callback())
+                
+                # Verify the save was successful by checking memory
+                saved_data = self.video_segments._data.get(video_name, {})
+                logger.info(f"Debug - Number of segments in saved_data: {len(saved_data)}")
+                missing_transcripts = [idx for idx in segment_index2name if idx not in saved_data or "transcript" not in saved_data[idx]]
+                if missing_transcripts:
+                    logger.warning(f"Debug - Missing transcripts for segments: {missing_transcripts}")
+                    logger.warning("Failed to save transcripts, retrying...")
+                    loop.run_until_complete(self.video_segments.upsert({video_name: sorted_data}))
+                    loop.run_until_complete(self.video_segments.index_done_callback())
+            else:
+                logger.info(f"Using cached transcripts for {video_name}")
             
             # Step3: saving video segments **as well as** obtain caption with vision language model
             manager = multiprocessing.Manager()
             captions = manager.dict()
             error_queue = manager.Queue()
             
-            process_saving_video_segments = multiprocessing.Process(
-                target=saving_video_segments,
-                args=(
-                    video_name,
-                    video_path,
-                    self.working_dir,
-                    segment_index2name,
-                    segment_times_info,
-                    error_queue,
-                    self.video_output_format,
-                )
-            )
+            # Check for cached captions
+            caption_storage = JsonKVStorage(namespace="video_captions", global_config={"working_dir": self.working_dir})
+            cached_captions = caption_storage._data.get(video_name, {})
             
-            process_segment_caption = multiprocessing.Process(
-                target=segment_caption,
-                args=(
-                    video_name,
-                    video_path,
-                    segment_index2name,
-                    transcripts,
-                    segment_times_info,
-                    captions,
-                    error_queue,
-                )
-            )
+            if cached_captions:
+                logger.info(f"Found {len(cached_captions)} cached captions for {video_name}")
+                # Add cached captions to the result
+                for index, caption in cached_captions.items():
+                    captions[int(index)] = caption
+                logger.info(f"Loaded {len(captions)} cached captions")
             
-            process_saving_video_segments.start()
-            process_segment_caption.start()
-            process_saving_video_segments.join()
-            process_segment_caption.join()
+            # First, ensure all video segments are properly saved
+            video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
+            if os.path.exists(video_segment_cache_path):
+                # Check if we have all expected segments
+                expected_segments = set(segment_index2name.keys())
+                actual_video_segments = set()
+                actual_audio_segments = set()
+                
+                for file in os.listdir(video_segment_cache_path):
+                    try:
+                        parts = file.split('.')[0].split('-')
+                        if len(parts) >= 4:
+                            segment_index = int(parts[1])
+                            if file.endswith(f'.{self.video_output_format}'):
+                                actual_video_segments.add(segment_index)
+                            elif file.endswith(f'.{self.audio_output_format}'):
+                                actual_audio_segments.add(segment_index)
+                    except (IndexError, ValueError):
+                        continue
+                
+                logger.info(f"Debug - Expected segments: {len(expected_segments)}")
+                logger.info(f"Debug - Actual video segments: {len(actual_video_segments)}")
+                logger.info(f"Debug - Actual audio segments: {len(actual_audio_segments)}")
+                
+                # Check and regenerate audio segments if needed
+                if expected_segments != actual_audio_segments:
+                    logger.warning(f"Found incomplete audio segments for {video_name}. Expected {len(expected_segments)} segments, found {len(actual_audio_segments)} segments.")
+                    logger.info("Regenerating audio segments...")
+                    # Remove only audio files
+                    for file in os.listdir(video_segment_cache_path):
+                        if file.endswith(f'.{self.audio_output_format}'):
+                            os.remove(os.path.join(video_segment_cache_path, file))
+                    # Regenerate audio segments
+                    segment_index2name, segment_times_info = save_audio_segments(
+                        video_path, 
+                        self.working_dir, 
+                        self.video_segment_length,
+                        self.rough_num_frames_per_segment,
+                        self.audio_output_format
+                    )
+                
+                # Check and regenerate video segments if needed
+                if expected_segments != actual_video_segments:
+                    logger.warning(f"Found incomplete video segments for {video_name}. Expected {len(expected_segments)} segments, found {len(actual_video_segments)} segments.")
+                    logger.info("Regenerating video segments...")
+                    # Remove only video files
+                    for file in os.listdir(video_segment_cache_path):
+                        if file.endswith(f'.{self.video_output_format}'):
+                            os.remove(os.path.join(video_segment_cache_path, file))
+                    # Regenerate video segments
+                    process_saving_video_segments = multiprocessing.Process(
+                        target=saving_video_segments,
+                        args=(
+                            video_name,
+                            video_path,
+                            self.working_dir,
+                            segment_index2name,
+                            segment_times_info,
+                            error_queue,
+                            self.video_output_format,
+                        )
+                    )
+                    process_saving_video_segments.start()
+                    process_saving_video_segments.join()
+                    
+                    # Verify video segments were saved
+                    saved_video_segments = set()
+                    for file in os.listdir(video_segment_cache_path):
+                        if file.endswith(f'.{self.video_output_format}'):
+                            try:
+                                parts = file.split('.')[0].split('-')
+                                if len(parts) >= 4:
+                                    segment_index = int(parts[1])
+                                    saved_video_segments.add(segment_index)
+                            except (IndexError, ValueError):
+                                continue
+                    
+                    if expected_segments != saved_video_segments:
+                        error_msg = f"Failed to save all video segments. Expected {len(expected_segments)} segments, found {len(saved_video_segments)} segments."
+                        error_queue.put(error_msg)
+                        raise RuntimeError(error_msg)
             
-            # if raise error in this two, stop the processing
-            while not error_queue.empty():
-                error_message = error_queue.get()
-                with open('error_log_videorag.txt', 'a', encoding='utf-8') as log_file:
-                    log_file.write(f"Video Name:{video_name} Error processing:\n{error_message}\n\n")
-                raise RuntimeError(error_message)
+            # Filter segments to only include those that have both files and transcripts
+            valid_segments = {}
+            # Create a mapping of segment indices to their sequential order
+            segment_order = {str(idx): i for i, idx in enumerate(sorted(segment_index2name.keys(), key=int))}
+            
+            for index in segment_index2name:
+                # Get the sequential index for this segment
+                seq_index = str(segment_order[str(index)])
+                if seq_index in transcripts:
+                    valid_segments[index] = segment_index2name[index]
+            
+            logger.info(f"Debug - Number of valid segments (with both files and transcripts): {len(valid_segments)}")
+            logger.info(f"Debug - Total segments: {len(segment_index2name)}")
+            logger.info(f"Debug - Total transcripts: {len(transcripts)}")
+            logger.info(f"Debug - Segment indices: {list(segment_index2name.keys())[:5]}...")
+            logger.info(f"Debug - Transcript indices: {list(transcripts.keys())[:5]}...")
+            logger.info(f"Debug - Segment order mapping: {dict(list(segment_order.items())[:5])}...")
+            
+            if not valid_segments:
+                logger.error(f"No valid segments found for {video_name} (segments with both files and transcripts)")
+                raise RuntimeError(f"No valid segments found for {video_name}")
+            
+            # Create a mapping of segment indices to their transcripts
+            transcript_mapping = {}
+            for index in sorted(valid_segments.keys(), key=int):
+                seq_index = str(segment_order[str(index)])
+                transcript_mapping[index] = transcripts[seq_index]
+            
+            # Only process segments that don't have cached captions, maintaining order
+            segments_to_process = {idx: name for idx, name in sorted(valid_segments.items(), key=lambda x: int(x[0])) if idx not in captions}
+            logger.info(f"Processing {len(segments_to_process)} segments for captioning (skipping {len(valid_segments) - len(segments_to_process)} cached segments)")
+            logger.info(f"Segment order: {list(segments_to_process.keys())[:5]}...")
+            
+            if segments_to_process:
+                # Create an event loop for the async function
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                try:
+                    # Run the async function
+                    loop.run_until_complete(segment_caption(
+                        video_name,
+                        video_path,
+                        segments_to_process,
+                        transcript_mapping,
+                        segment_times_info,
+                        captions,
+                        error_queue,
+                        self.working_dir,
+                    ))
+                finally:
+                    loop.close()
+                
+                # if raise error in this two, stop the processing
+                while not error_queue.empty():
+                    error_message = error_queue.get()
+                    with open('error_log_videorag.txt', 'a', encoding='utf-8') as log_file:
+                        log_file.write(f"Video Name:{video_name} Error processing:\n{error_message}\n\n")
+                    raise RuntimeError(error_message)
+            
+            # Save captions as they are generated
+            current_data = self.video_segments._data.get(video_name, {})
+            for index, caption in captions.items():
+                if index in current_data:
+                    current_data[index]["content"] = caption
+            loop.run_until_complete(self.video_segments.upsert({video_name: current_data}))
             
             # Step4: insert video segments information
             segments_information = merge_segment_information(
@@ -296,12 +628,16 @@ class VideoRAG:
                 {video_name: segments_information}
             ))
             
-            # Step5: encode video segment features
-            loop.run_until_complete(self.video_segment_feature_vdb.upsert(
-                video_name,
-                segment_index2name,
-                self.video_output_format,
-            ))
+            try:
+                # Step5: encode video segment features
+                loop.run_until_complete(self.video_segment_feature_vdb.upsert(
+                    video_name,
+                    segment_index2name,
+                    self.video_output_format,
+                ))
+            except Exception as e:
+                logger.error(f"Error in video segment feature encoding: {str(e)}")
+                logger.info("Continuing with available data...")
             
             # Step6: delete the cache file
             video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
@@ -311,7 +647,11 @@ class VideoRAG:
             # Step 7: saving current video information
             loop.run_until_complete(self._save_video_segments())
         
-        loop.run_until_complete(self.ainsert(self.video_segments._data))
+        try:
+            loop.run_until_complete(self.ainsert(self.video_segments._data))
+        except Exception as e:
+            logger.error(f"Error in final ainsert: {str(e)}")
+            logger.info("Continuing with available data...")
 
     def query(self, query: str, param: QueryParam = QueryParam()):
         loop = always_get_an_event_loop()

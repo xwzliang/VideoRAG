@@ -27,7 +27,7 @@ if __name__ == '__main__':
     # if param.wo_reference = False, VideoRAG will add reference to video clips in the response
     param.wo_reference = True
 
-    videorag = VideoRAG(llm=local_model_config, working_dir=f"./videorag-workdir")
+    videorag = VideoRAG(llm=local_model_config, working_dir=os.path.expanduser("~/videos/videorag-workdir"))
     
     # Set Qwen-VL model to be loaded via REST API
     videorag.caption_model = "Qwen/Qwen-VL-Chat"  # This will be loaded via REST API when needed

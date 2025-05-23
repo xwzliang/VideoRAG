@@ -34,18 +34,18 @@ if __name__ == '__main__':
     # Please enter your video file path in this list; there is no limit on the length.
     # Here is an example; you can use your own videos instead.
     video_paths = [
-        '~/videos/videoplayback.mp4',
+        '~/videos/Batman_Begins_2005_BluRay_1080p_x265_10bit_2Audio_MNHD-FRDS.mkv',
     ]
     video_paths = [
         os.path.expanduser(p) for p in video_paths
     ]
-    videorag = VideoRAG(llm=local_model_config, working_dir=f"./videorag-workdir")
+    videorag = VideoRAG(llm=local_model_config, working_dir=os.path.expanduser("~/videos/videorag-workdir"))
     
     # Load Qwen-VL model for vision tasks
     videorag.caption_model = "Qwen/Qwen-VL-Chat"  # This will be loaded when needed
     
     # Insert videos
-    # videorag.insert_video(video_path_list=video_paths)
+    videorag.insert_video(video_path_list=video_paths)
     
     # To regenerate a specific video:
-    videorag.regenerate_video(video_paths[0])
+    # videorag.regenerate_video(video_paths[0])

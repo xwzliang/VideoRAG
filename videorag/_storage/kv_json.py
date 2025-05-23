@@ -11,14 +11,32 @@ from ..base import (
 class JsonKVStorage(BaseKVStorage):
     def __post_init__(self):
         working_dir = self.global_config["working_dir"]
+        logger.info(f"Initializing JsonKVStorage for {self.namespace} in {working_dir}")
+        
+        # Ensure working directory exists
+        if not os.path.exists(working_dir):
+            logger.info(f"Creating working directory: {working_dir}")
+            os.makedirs(working_dir)
+            
         self._file_name = os.path.join(working_dir, f"kv_store_{self.namespace}.json")
-        self._data = load_json(self._file_name) or {}
-        logger.info(f"Load KV {self.namespace} with {len(self._data)} data")
+        logger.info(f"Storage file path: {self._file_name}")
+        
+        if os.path.exists(self._file_name):
+            logger.info(f"Loading existing data from {self._file_name}")
+            self._data = load_json(self._file_name) or {}
+        else:
+            logger.info(f"Creating new storage file at {self._file_name}")
+            self._data = {}
+            # Create empty file
+            write_json(self._data, self._file_name)
+            
+        logger.info(f"Loaded KV {self.namespace} with {len(self._data)} data")
 
     async def all_keys(self) -> list[str]:
         return list(self._data.keys())
 
     async def index_done_callback(self):
+        logger.info(f"Saving {len(self._data)} items to {self._file_name}")
         write_json(self._data, self._file_name)
 
     async def get_by_id(self, id):
