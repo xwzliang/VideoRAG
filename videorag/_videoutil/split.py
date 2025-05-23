@@ -8,6 +8,31 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 import multiprocessing
 from functools import partial
 from .._utils import logger
+from multiprocessing import Pool
+
+def _process_audio_segment(args):
+    """Helper function to process a single audio segment in parallel."""
+    video_path, start, end, segment_index, unique_timestamp, video_segment_cache_path, audio_output_format, num_frames_per_segment = args
+    
+    with VideoFileClip(video_path) as video:
+        subvideo = video.subclip(start, end)
+        subvideo_length = subvideo.duration
+        frame_times = np.linspace(0, subvideo_length, num_frames_per_segment, endpoint=False)
+        frame_times += start
+        
+        segment_name = f"{unique_timestamp}-{segment_index}-{start}-{end}"
+        
+        # save audio segment
+        audio_file = f'{segment_name}.{audio_output_format}'
+        subaudio = subvideo.audio
+        subaudio.write_audiofile(
+            os.path.join(video_segment_cache_path, audio_file),
+            codec='mp3',
+            verbose=False,
+            logger=None
+        )
+        
+        return segment_index, segment_name, frame_times, (start, end)
 
 def save_audio_segments(
     video_path,
@@ -15,6 +40,7 @@ def save_audio_segments(
     segment_length,
     num_frames_per_segment,
     audio_output_format='mp3',
+    num_processes=None,
 ):  
     unique_timestamp = str(int(time.time() * 1000))
     video_name = os.path.basename(video_path).split('.')[0]
@@ -23,8 +49,8 @@ def save_audio_segments(
         shutil.rmtree(video_segment_cache_path)
     os.makedirs(video_segment_cache_path, exist_ok=False)
     
-    segment_index = 0
     segment_index2name, segment_times_info = {}, {}
+    
     with VideoFileClip(video_path) as video:
         total_video_length = int(video.duration)
         start_times = list(range(0, total_video_length, segment_length))
@@ -32,32 +58,38 @@ def save_audio_segments(
         if len(start_times) > 1 and (total_video_length - start_times[-1]) < 5:
             start_times = start_times[:-1]
         
-        for start in tqdm(start_times, desc=f"Saving Audio Segments {video_name}"):
+        # Prepare arguments for parallel processing
+        process_args = []
+        for i, start in enumerate(start_times):
             if start != start_times[-1]:
                 end = min(start + segment_length, total_video_length)
             else:
                 end = total_video_length
-            
-            subvideo = video.subclip(start, end)
-            subvideo_length = subvideo.duration
-            frame_times = np.linspace(0, subvideo_length, num_frames_per_segment, endpoint=False)
-            frame_times += start
-            
-            segment_index2name[f"{segment_index}"] = f"{unique_timestamp}-{segment_index}-{start}-{end}"
-            segment_times_info[f"{segment_index}"] = {"frame_times": frame_times, "timestamp": (start, end)}
-            
-            # save audio segment
-            audio_file_base_name = segment_index2name[f"{segment_index}"]
-            audio_file = f'{audio_file_base_name}.{audio_output_format}'
-            subaudio = subvideo.audio
-            subaudio.write_audiofile(
-                os.path.join(video_segment_cache_path, audio_file),
-                codec='mp3',
-                verbose=False,
-                logger=None
-            )
-            
-            segment_index += 1
+            process_args.append((
+                video_path, start, end, i, unique_timestamp,
+                video_segment_cache_path, audio_output_format, num_frames_per_segment
+            ))
+        
+        # Set default number of processes if not specified
+        if num_processes is None:
+            num_processes = min(multiprocessing.cpu_count(), 32)
+        logger.info(f"Using {num_processes} processes to save audio segments")
+        
+        # Process segments in parallel
+        with Pool(processes=num_processes) as pool:
+            results = list(tqdm(
+                pool.imap(_process_audio_segment, process_args),
+                total=len(process_args),
+                desc=f"Saving Audio Segments {video_name}"
+            ))
+        
+        # Collect results
+        for segment_index, segment_name, frame_times, timestamp in results:
+            segment_index2name[f"{segment_index}"] = segment_name
+            segment_times_info[f"{segment_index}"] = {
+                "frame_times": frame_times,
+                "timestamp": timestamp
+            }
 
     return segment_index2name, segment_times_info
 
