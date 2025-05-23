@@ -330,7 +330,8 @@ class VideoRAG:
                                     segment_index = int(parts[1])
                                     start_time = int(parts[2])
                                     end_time = int(parts[3])
-                                    segment_index2name[segment_index] = segment_file
+                                    # Store segment name without extension
+                                    segment_index2name[segment_index] = os.path.splitext(segment_file)[0]
                                     # Calculate frame times for the segment
                                     frame_times = np.linspace(start_time, end_time, self.rough_num_frames_per_segment, endpoint=False)
                                     segment_times_info[segment_index] = {

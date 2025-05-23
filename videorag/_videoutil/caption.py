@@ -7,6 +7,8 @@ import requests
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import gc
 from videorag.prompt import PROMPTS
+import time
+
 def load_vision_model():
     """Request server to load the vision model."""
     try:
@@ -99,14 +101,14 @@ async def segment_caption(video_name, video_path, segment_index2name, transcript
                     continue
                 
                 segment_transcript = transcripts[index]
-                start_time = segment_times_info[index]["frame_times"][0]
-                end_time = segment_times_info[index]["frame_times"][-1]
+                # Get segment video path from _cache directory
+                # Remove any existing extension from segment_name before adding .mp4
+                segment_name = os.path.splitext(segment_index2name[index])[0]
+                segment_path = os.path.join(working_dir, "_cache", video_name, f"{segment_name}.mp4")
                 
                 # Prepare request data for Qwen-VL
                 request_data = {
-                    "video_path": video_path,
-                    "start_time": float(start_time),
-                    "end_time": float(end_time),
+                    "video_path": segment_path,
                     "transcript": segment_transcript,
                     "query": PROMPTS["video_caption"],
                     "fps": 3.0  # Adjust based on your needs
@@ -144,7 +146,8 @@ def merge_segment_information(segment_index2name, segment_times_info, transcript
     inserting_segments = {}
     for index in segment_index2name:
         inserting_segments[index] = {"content": None, "time": None}
-        segment_name = segment_index2name[index]
+        # Remove any existing extension from segment_name
+        segment_name = os.path.splitext(segment_index2name[index])[0]
         inserting_segments[index]["time"] = '-'.join(segment_name.split('-')[-2:])
         inserting_segments[index]["content"] = f"Caption:\n{captions[index]}\nTranscript:\n{transcripts[index]}\n\n"
         inserting_segments[index]["transcript"] = transcripts[index]
