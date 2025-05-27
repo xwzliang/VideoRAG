@@ -39,6 +39,33 @@ if __name__ == '__main__':
     video_paths = [
         os.path.expanduser(p) for p in video_paths
     ]
+
+    files = [
+        # "The.Dark.Knight.2008.BluRay.1080p.x265.10bit.2Audio.MNHD-FRDS.mkv",
+    ]
+    
+    for file in files:
+        # Get current file path
+        current_path = os.path.join(os.path.expanduser(f"~/videos"), file)
+        # Split filename and extension
+        name, ext = os.path.splitext(file)
+        # Replace dots except for the extension
+        new_name = name.replace('.', '_') + ext
+        # Create new path with ~/videos
+        new_path = os.path.expanduser(f"~/videos/{new_name}")
+        
+        # Create ~/videos directory if it doesn't exist
+        os.makedirs(os.path.dirname(new_path), exist_ok=True)
+        
+        # Rename the file
+        if os.path.exists(current_path):
+            os.rename(current_path, new_path)
+            print(f"Renamed: {current_path} -> {new_path}")
+        else:
+            print(f"Warning: File not found: {current_path}")
+            
+        video_paths.append(new_path)
+        
     videorag = VideoRAG(llm=local_model_config, working_dir=os.path.expanduser("~/videos/videorag-workdir"))
     
     # Load Qwen-VL model for vision tasks

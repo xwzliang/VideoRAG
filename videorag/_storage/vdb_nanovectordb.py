@@ -91,37 +91,56 @@ class NanoVectorDBVideoSegmentStorage(BaseVectorStorage):
         )
     
     async def upsert(self, video_name, segment_index2name, video_output_format):
-        embedder = imagebind_model.imagebind_huge(pretrained=True).cuda()
-        embedder.eval()
+        # Initialize multiple GPU workers
+        num_gpus = torch.cuda.device_count()
+        if num_gpus == 0:
+            logger.warning("No GPU available, falling back to CPU")
+            embedders = [imagebind_model.imagebind_huge(pretrained=True)]
+        else:
+            logger.info(f"Using {num_gpus} GPUs for parallel processing")
+            embedders = [imagebind_model.imagebind_huge(pretrained=True).cuda(i) for i in range(num_gpus)]
         
-        logger.info(f"Inserting {len(segment_index2name)} segments to {self.namespace}")
-        if not len(segment_index2name):
-            logger.warning("You insert an empty data to vector DB")
-            return []
-        list_data, video_paths = [], []
-        cache_path = os.path.join(self.global_config["working_dir"], '_cache', video_name)
-        index_list = list(segment_index2name.keys())
-        for index in index_list:
-            list_data.append({
-                "__id__": f"{video_name}_{index}",
-                "__video_name__": video_name,
-                "__index__": index,
-            })
-            segment_name = segment_index2name[index]
-            video_file = os.path.join(cache_path, f"{segment_name}.{video_output_format}")
-            video_paths.append(video_file)
-        batches = [
-            video_paths[i: i + self._max_batch_size]
-            for i in range(0, len(video_paths), self._max_batch_size)
-        ]
+        # Prepare data
+        list_data = []
+        video_segment_cache_path = os.path.join(self.working_dir, '_cache', video_name)
+        for index, segment_name in segment_index2name.items():
+            segment_path = os.path.join(video_segment_cache_path, f"{segment_name}.{video_output_format}")
+            if os.path.exists(segment_path):
+                list_data.append({
+                    "__id__": f"{video_name}_{index}",
+                    "video_name": video_name,
+                    "segment_index": index,
+                    "segment_name": segment_name,
+                    "segment_path": segment_path,
+                })
+        
+        # Split data into batches for parallel processing
+        batch_size = 8  # Adjust based on your GPU memory
+        batches = [list_data[i:i + batch_size] for i in range(0, len(list_data), batch_size)]
+        
+        # Process batches in parallel using multiple GPUs
         embeddings = []
-        for _batch in tqdm(batches, desc=f"Encoding Video Segments {video_name}"):
-            batch_embeddings = encode_video_segments(_batch, embedder)
+        for batch_idx, _batch in enumerate(tqdm(batches, desc=f"Encoding Video Segments {video_name}")):
+            # Select GPU worker for this batch
+            gpu_idx = batch_idx % num_gpus
+            embedder = embedders[gpu_idx]
+            
+            # Get video paths for this batch
+            batch_paths = [d["segment_path"] for d in _batch]
+            
+            # Encode batch
+            batch_embeddings = encode_video_segments(batch_paths, embedder)
             embeddings.append(batch_embeddings)
+        
+        # Combine all embeddings
         embeddings = torch.concat(embeddings, dim=0)
         embeddings = embeddings.numpy()
+        
+        # Add embeddings to data
         for i, d in enumerate(list_data):
             d["__vector__"] = embeddings[i]
+        
+        # Save to database
         results = self._client.upsert(datas=list_data)
         return results
     

@@ -8,6 +8,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 import gc
 from videorag.prompt import PROMPTS
 import time
+from .._utils import logger
 
 def load_vision_model():
     """Request server to load the vision model."""
@@ -80,7 +81,6 @@ async def segment_caption(video_name, video_path, segment_index2name, transcript
         try:
             # Load existing captions from storage
             from .._storage import JsonKVStorage
-            from .._utils import logger
             
             # Initialize storage for captions with working directory
             caption_storage = JsonKVStorage(namespace="video_captions", global_config={"working_dir": working_dir})
@@ -143,15 +143,87 @@ async def segment_caption(video_name, video_path, segment_index2name, transcript
         raise RuntimeError
 
 def merge_segment_information(segment_index2name, segment_times_info, transcripts, captions):
+    """Merge captions and transcripts into segment information."""
     inserting_segments = {}
-    for index in segment_index2name:
-        inserting_segments[index] = {"content": None, "time": None}
-        # Remove any existing extension from segment_name
-        segment_name = os.path.splitext(segment_index2name[index])[0]
-        inserting_segments[index]["time"] = '-'.join(segment_name.split('-')[-2:])
-        inserting_segments[index]["content"] = f"Caption:\n{captions[index]}\nTranscript:\n{transcripts[index]}\n\n"
-        inserting_segments[index]["transcript"] = transcripts[index]
-        inserting_segments[index]["frame_times"] = segment_times_info[index]["frame_times"].tolist()
+    segment_index2name = {str(k): v for k, v in segment_index2name.items()}
+    segment_times_info = {str(k): v for k, v in segment_times_info.items()}
+    transcripts = {str(k): v for k, v in transcripts.items()}
+    captions = {str(k): v for k, v in captions.items()}
+    
+    # Log the lengths for debugging
+    logger.info(f"Debug - Expected segments: {len(segment_index2name)}")
+    logger.info(f"Debug - Actual video segments: {len(segment_times_info)}")
+    logger.info(f"Debug - Actual audio segments: {len(transcripts)}")
+    logger.info(f"Debug - Total captions: {len(captions)}")
+    
+    # Convert all indices to strings for comparison
+    all_indices = set(str(idx) for idx in segment_index2name.keys())
+    transcript_indices = set(str(idx) for idx in transcripts.keys())
+    caption_indices = set(str(idx) for idx in captions.keys())
+    
+    # Log sample of indices and their values for debugging
+    sample_indices = sorted(list(all_indices))[:5]
+    logger.info(f"Debug - Sample segment indices: {sample_indices}")
+    logger.info(f"Debug - Sample transcript indices: {sorted(list(transcript_indices))[:5]}")
+    logger.info(f"Debug - Sample caption indices: {sorted(list(caption_indices))[:5]}")
+    
+    # Log sample values for debugging
+    # for idx in sample_indices:
+    #     logger.info(f"Debug - Sample data for index {idx}:")
+    #     logger.info(f"  - segment_times_info: {segment_times_info.get(idx, 'Not found')}")
+    #     logger.info(f"  - transcript: {transcripts.get(idx, 'Not found')}")
+    #     logger.info(f"  - caption: {captions.get(idx, 'Not found')}")
+    
+    # Log any missing indices
+    if all_indices != transcript_indices:
+        logger.warning(f"Missing transcripts for indices: {all_indices - transcript_indices}")
+    if all_indices != caption_indices:
+        logger.warning(f"Missing captions for indices: {all_indices - caption_indices}")
+    
+    # Merge only for indices that exist in all dictionaries
+    valid_indices = all_indices.intersection(transcript_indices).intersection(caption_indices)
+    logger.info(f"Debug - Number of valid segments (with both files and transcripts): {len(valid_indices)}")
+    
+    for index in valid_indices:
+        try:
+            # Get data using string index
+            segment_info = segment_times_info.get(index)
+            if not segment_info:
+                logger.error(f"Missing segment_times_info for index {index}")
+                continue
+                
+            transcript = transcripts.get(index)
+            if not transcript:
+                logger.error(f"Missing transcript for index {index}")
+                continue
+                
+            caption = captions.get(index)
+            if not caption:
+                logger.error(f"Missing caption for index {index}")
+                continue
+            
+            # Get timestamp from segment_info
+            start_time, end_time = segment_info["timestamp"]
+            time_str = f"{start_time}-{end_time}"
+            
+            inserting_segments[index] = {
+                "content": f"Caption:\n{caption}\nTranscript:\n{transcript}\n\n",
+                "time": time_str,
+                "frame_times": segment_info["frame_times"].tolist()
+            }
+        except Exception as e:
+            logger.error(f"Error processing index {index}: {str(e)}")
+            continue
+    
+    # Log any segments that were skipped
+    skipped_indices = all_indices - valid_indices
+    if skipped_indices:
+        logger.warning(f"Skipped merging for indices: {skipped_indices}")
+    
+    if not inserting_segments:
+        logger.error("No segments were successfully merged!")
+        raise RuntimeError("Failed to merge any segments - check the logs for details")
+    
     return inserting_segments
         
 def retrieved_segment_caption(caption_model, caption_tokenizer, refine_knowledge, retrieved_segments, video_path_db, video_segments, num_sampled_frames):
