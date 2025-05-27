@@ -58,7 +58,24 @@ class JsonKVStorage(BaseKVStorage):
         return set([s for s in data if s not in self._data])
 
     async def upsert(self, data: dict[str, dict]):
-        self._data.update(data)
+        for k, v in data.items():
+            if isinstance(v, dict):
+                # Only sort keys that are numeric strings
+                numeric_items = []
+                non_numeric_items = []
+                for key, value in v.items():
+                    try:
+                        int(key)  # Try to convert to int
+                        numeric_items.append((key, value))
+                    except ValueError:
+                        non_numeric_items.append((key, value))
+                
+                # Sort only the numeric keys
+                sorted_numeric = sorted(numeric_items, key=lambda x: int(x[0]))
+                # Combine sorted numeric items with non-numeric items
+                self._data[k] = dict(sorted_numeric + non_numeric_items)
+            else:
+                self._data[k] = v
 
     async def drop(self):
         self._data = {}

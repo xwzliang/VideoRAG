@@ -142,6 +142,10 @@ class VideoRAG:
             namespace="video_segments", global_config=asdict(self)
         )
 
+        self.video_transcripts = self.key_string_value_json_storage_cls(
+            namespace="video_transcripts", global_config=asdict(self)
+        )
+
         self.text_chunks = self.key_string_value_json_storage_cls(
             namespace="text_chunks", global_config=asdict(self)
         )
@@ -208,34 +212,47 @@ class VideoRAG:
         """Load cached data from storage if it exists."""
         try:
             # Load video path data
-            if hasattr(self.video_path_db, '_data') and self.video_path_db._data:
+            if hasattr(self.video_path_db, '_data'):
                 logger.info("Loading cached video path data...")
                 if hasattr(self.video_path_db, 'load'):
                     self.video_path_db.load()
+                    logger.info(f"Loaded KV video_path with {len(self.video_path_db._data)} data")
 
             # Load video segments data
-            if hasattr(self.video_segments, '_data') and self.video_segments._data:
+            if hasattr(self.video_segments, '_data'):
                 logger.info("Loading cached video segments data...")
                 if hasattr(self.video_segments, 'load'):
                     self.video_segments.load()
+                    logger.info(f"Loaded KV video_segments with {len(self.video_segments._data)} data")
+
+            # Load video transcripts data
+            if hasattr(self.video_transcripts, '_data'):
+                logger.info("Loading cached video transcripts data...")
+                if hasattr(self.video_transcripts, 'load'):
+                    self.video_transcripts.load()
+                    total_transcripts = sum(len(transcripts) for transcripts in self.video_transcripts._data.values())
+                    logger.info(f"Loaded KV video_transcripts with {len(self.video_transcripts._data)} videos and {total_transcripts} total transcripts")
 
             # Load text chunks data
-            if hasattr(self.text_chunks, '_data') and self.text_chunks._data:
+            if hasattr(self.text_chunks, '_data'):
                 logger.info("Loading cached text chunks data...")
                 if hasattr(self.text_chunks, 'load'):
                     self.text_chunks.load()
+                    logger.info(f"Loaded KV text_chunks with {len(self.text_chunks._data)} data")
 
             # Load LLM response cache if enabled
-            if self.enable_llm_cache and hasattr(self.llm_response_cache, '_data') and self.llm_response_cache._data:
+            if self.enable_llm_cache and hasattr(self.llm_response_cache, '_data'):
                 logger.info("Loading cached LLM responses...")
                 if hasattr(self.llm_response_cache, 'load'):
                     self.llm_response_cache.load()
+                    logger.info(f"Loaded KV llm_response_cache with {len(self.llm_response_cache._data)} data")
 
             # Load entity graph data
-            if hasattr(self.chunk_entity_relation_graph, '_graph') and self.chunk_entity_relation_graph._graph:
+            if hasattr(self.chunk_entity_relation_graph, '_graph'):
                 logger.info("Loading cached entity graph data...")
                 if hasattr(self.chunk_entity_relation_graph, 'load'):
                     self.chunk_entity_relation_graph.load()
+                    logger.info(f"Loaded graph with {len(self.chunk_entity_relation_graph._graph.nodes)} nodes, {len(self.chunk_entity_relation_graph._graph.edges)} edges")
 
             # Load vector database data
             if self.enable_local and hasattr(self.entities_vdb, 'load'):
@@ -279,25 +296,83 @@ class VideoRAG:
             video_name = os.path.basename(video_path).split('.')[0]
             if video_name in self.video_segments._data:
                 logger.info(f"Find the video named {os.path.basename(video_path)} in storage.")
+                logger.info(f"Debug - Checking video segments for {video_name}")
+                logger.info(f"Debug - Video segments data exists: {bool(self.video_segments._data)}")
+                logger.info(f"Debug - Video segments keys: {list(self.video_segments._data.keys())}")
+                
                 # Check if we have all necessary data (transcripts and captions)
                 current_data = self.video_segments._data.get(video_name, {})
+                logger.info(f"Debug - Current data for {video_name}: {bool(current_data)}")
+                logger.info(f"Debug - Current data keys: {list(current_data.keys())[:5]}...")
+                
+                # Check if we have transcripts in the transcript storage
+                logger.info(f"Debug - Checking transcript storage for {video_name}")
+                logger.info(f"Debug - Transcript storage exists: {bool(self.video_transcripts)}")
+                if self.video_transcripts:
+                    logger.info(f"Debug - Transcript storage data exists: {bool(self.video_transcripts._data)}")
+                    logger.info(f"Debug - Transcript storage keys: {list(self.video_transcripts._data.keys())}")
+                    cached_transcripts = self.video_transcripts._data.get(video_name, {})
+                    logger.info(f"Debug - Found cached transcripts in main storage: {bool(cached_transcripts)}")
+                    if cached_transcripts:
+                        logger.info(f"Debug - Number of cached transcripts: {len(cached_transcripts)}")
+                        logger.info(f"Debug - First few transcript indices: {list(cached_transcripts.keys())[:5]}")
+                
                 has_all_data = True
                 for index in current_data:
-                    if "transcript" not in current_data[index] or "content" not in current_data[index]:
+                    if "content" not in current_data[index]:
                         has_all_data = False
+                        logger.info(f"Debug - Missing content for segment {index}")
                         break
                 
                 if has_all_data:
-                    logger.info(f"Video {video_name} has all necessary data (transcripts and captions), skipping processing.")
+                    logger.info(f"Video {video_name} has all necessary data (captions), skipping processing.")
                     continue
                 else:
                     logger.info(f"Video {video_name} found but missing some data, proceeding with processing...")
-                    # If we have transcripts but missing captions, use the cached transcripts
-                    if all("transcript" in current_data[index] for index in current_data):
-                        logger.info(f"Using cached transcripts for {video_name}")
-                        transcripts = {index: current_data[index]["transcript"] for index in current_data}
-                    else:
-                        transcripts = None
+                    # Check for cached transcripts
+                    logger.info(f"Debug - About to initialize transcript storage for {video_name}")
+                    try:
+                        transcript_storage = JsonKVStorage(namespace="video_transcripts", global_config={"working_dir": self.working_dir})
+                        logger.info(f"Debug - Successfully created transcript storage instance")
+                        logger.info(f"Debug - Transcript storage path: {getattr(transcript_storage, '_storage_file_path', 'Not set')}")
+                        logger.info(f"Debug - Transcript storage data before load: {getattr(transcript_storage, '_data', {})}")
+                        
+                        # Explicitly load the transcript storage
+                        if hasattr(transcript_storage, 'load'):
+                            logger.info(f"Debug - About to load transcript storage")
+                            transcript_storage.load()
+                            logger.info(f"Debug - Successfully loaded transcript storage")
+                            logger.info(f"Debug - Transcript storage data after load: {transcript_storage._data}")
+                            logger.info(f"Debug - Available video keys in transcript storage: {list(transcript_storage._data.keys())}")
+                        else:
+                            logger.warning(f"Debug - Transcript storage has no load method")
+                            
+                        cached_transcripts = transcript_storage._data.get(video_name, {})
+                        logger.info(f"Debug - Looking for transcripts for video: {video_name}")
+                        logger.info(f"Debug - Found cached transcripts: {bool(cached_transcripts)}")
+                        
+                        if cached_transcripts:
+                            logger.info(f"Found {len(cached_transcripts)} cached transcripts for {video_name}")
+                            # Verify transcript indices match segment indices
+                            segment_indices = set(str(idx) for idx in current_data.keys())
+                            transcript_indices = set(cached_transcripts.keys())
+                            logger.info(f"Debug - Segment indices: {sorted(list(segment_indices))[:5]}...")
+                            logger.info(f"Debug - Transcript indices: {sorted(list(transcript_indices))[:5]}...")
+                            
+                            if segment_indices == transcript_indices:
+                                logger.info(f"Using {len(cached_transcripts)} cached transcripts for {video_name}")
+                                transcripts = cached_transcripts
+                            else:
+                                logger.warning(f"Cached transcripts indices don't match segment indices for {video_name}")
+                                logger.warning(f"Segment indices: {sorted(list(segment_indices))[:5]}...")
+                                logger.warning(f"Transcript indices: {sorted(list(transcript_indices))[:5]}...")
+                                transcripts = None
+                        else:
+                            logger.info(f"No cached transcripts found for {video_name}")
+                            transcripts = None
+                    except Exception as e:
+                        logger.error(f"Debug - Error initializing transcript storage: {str(e)}")
+                        raise
             else:
                 transcripts = None
                 
@@ -350,7 +425,7 @@ class VideoRAG:
                         elif segment_file.endswith(f'.{self.audio_output_format}'):
                             has_audio_segments = True
                             # Try to extract segment index from filename
-                            # Format: timestamp-segment-start-end.mp3
+                            # Format: timestamp-segment-start-end.mp4
                             try:
                                 # Extract the segment number (second number in the filename)
                                 parts = segment_file.split('.')[0].split('-')
@@ -410,45 +485,43 @@ class VideoRAG:
             ))
             
             # Step2: obtain transcript with whisper
+            logger.info(f"Debug - About to check transcript cache for {video_name}")
+            transcript_storage = JsonKVStorage(namespace="video_transcripts", global_config={"working_dir": self.working_dir})
+            cached_transcripts = transcript_storage._data.get(video_name, {})
+            
+            if cached_transcripts:
+                logger.info(f"Found {len(cached_transcripts)} cached transcripts for {video_name}")
+                # Verify transcript indices match segment indices
+                segment_indices = set(str(idx) for idx in segment_index2name.keys())
+                transcript_indices = set(cached_transcripts.keys())
+                
+                if segment_indices == transcript_indices:
+                    logger.info(f"Using {len(cached_transcripts)} cached transcripts for {video_name}")
+                    transcripts = cached_transcripts
+                else:
+                    logger.warning(f"Cached transcripts indices don't match segment indices for {video_name}")
+                    logger.warning(f"Segment indices: {sorted(list(segment_indices))[:5]}...")
+                    logger.warning(f"Transcript indices: {sorted(list(transcript_indices))[:5]}...")
+                    transcripts = None
+            else:
+                logger.info(f"No cached transcripts found for {video_name}")
+                transcripts = None
+
             if transcripts is None:
-                logger.info(f"No cached transcripts found for {video_name}, running speech recognition...")
+                logger.info(f"No valid cached transcripts found for {video_name}, running speech recognition...")
                 transcripts = speech_to_text(
                     video_name, 
                     self.working_dir, 
                     segment_index2name,
                     self.audio_output_format
                 )
-                # Save transcripts immediately after speech recognition
-                current_data = self.video_segments._data.get(video_name, {})
+                # Save transcripts to storage
                 logger.info(f"Debug - Number of transcripts generated: {len(transcripts)}")
-                logger.info(f"Debug - Number of segments in current_data: {len(current_data)}")
+                storage_path = getattr(transcript_storage, '_storage_file_path', None) or getattr(transcript_storage, 'storage_file_path', None) or 'Not set'
+                logger.info(f"Debug - Saving transcripts to: {storage_path}")
                 
-                for index, transcript in transcripts.items():
-                    if index in current_data:
-                        current_data[index]["transcript"] = transcript
-                        logger.info(f"Debug - Saved transcript for segment {index}")
-                    else:
-                        logger.warning(f"Debug - Segment {index} not found in current_data")
-                
-                # Sort segments by index before saving
-                sorted_data = {}
-                for index in sorted(current_data.keys(), key=int):
-                    sorted_data[index] = current_data[index]
-                
-                # Save to memory and disk
-                logger.info(f"Debug - Saving {len(sorted_data)} segments with transcripts")
-                loop.run_until_complete(self.video_segments.upsert({video_name: sorted_data}))
-                loop.run_until_complete(self.video_segments.index_done_callback())
-                
-                # Verify the save was successful by checking memory
-                saved_data = self.video_segments._data.get(video_name, {})
-                logger.info(f"Debug - Number of segments in saved_data: {len(saved_data)}")
-                missing_transcripts = [idx for idx in segment_index2name if idx not in saved_data or "transcript" not in saved_data[idx]]
-                if missing_transcripts:
-                    logger.warning(f"Debug - Missing transcripts for segments: {missing_transcripts}")
-                    logger.warning("Failed to save transcripts, retrying...")
-                    loop.run_until_complete(self.video_segments.upsert({video_name: sorted_data}))
-                    loop.run_until_complete(self.video_segments.index_done_callback())
+                loop.run_until_complete(transcript_storage.upsert({video_name: transcripts}))
+                loop.run_until_complete(transcript_storage.index_done_callback())
             else:
                 logger.info(f"Using cached transcripts for {video_name}")
             
@@ -552,31 +625,46 @@ class VideoRAG:
             
             # Filter segments to only include those that have both files and transcripts
             valid_segments = {}
-            # Create a mapping of segment indices to their sequential order
-            segment_order = {str(idx): i for i, idx in enumerate(sorted(segment_index2name.keys(), key=int))}
             
+            # First verify that all segments have their files
             for index in segment_index2name:
-                # Get the sequential index for this segment
-                seq_index = str(segment_order[str(index)])
-                if seq_index in transcripts:
+                segment_name = segment_index2name[index]
+                video_file = os.path.join(video_segment_cache_path, f"{segment_name}.{self.video_output_format}")
+                audio_file = os.path.join(video_segment_cache_path, f"{segment_name}.{self.audio_output_format}")
+                
+                # Convert index to string for consistent comparison with transcripts
+                index_str = str(index)
+                
+                # Check if files exist and transcript exists
+                if os.path.exists(video_file) and os.path.exists(audio_file) and index_str in transcripts:
                     valid_segments[index] = segment_index2name[index]
+                    # logger.info(f"Debug - Valid segment {index}: files exist and has transcript")
+                else:
+                    if not os.path.exists(video_file):
+                        logger.warning(f"Debug - Missing video file for segment {index}: {video_file}")
+                    if not os.path.exists(audio_file):
+                        logger.warning(f"Debug - Missing audio file for segment {index}: {audio_file}")
+                    if index_str not in transcripts:
+                        logger.warning(f"Debug - Missing transcript for segment {index} (looking for index_str={index_str})")
             
             logger.info(f"Debug - Number of valid segments (with both files and transcripts): {len(valid_segments)}")
             logger.info(f"Debug - Total segments: {len(segment_index2name)}")
             logger.info(f"Debug - Total transcripts: {len(transcripts)}")
             logger.info(f"Debug - Segment indices: {list(segment_index2name.keys())[:5]}...")
             logger.info(f"Debug - Transcript indices: {list(transcripts.keys())[:5]}...")
-            logger.info(f"Debug - Segment order mapping: {dict(list(segment_order.items())[:5])}...")
             
             if not valid_segments:
-                logger.error(f"No valid segments found for {video_name} (segments with both files and transcripts)")
+                # Additional debug information
+                logger.error(f"No valid segments found for {video_name}")
+                logger.error(f"First few transcript keys: {list(transcripts.keys())[:5]}")
+                logger.error(f"First few segment indices: {list(segment_index2name.keys())[:5]}")
+                logger.error(f"Sample transcript content for first key: {next(iter(transcripts.items())) if transcripts else 'No transcripts'}")
                 raise RuntimeError(f"No valid segments found for {video_name}")
             
             # Create a mapping of segment indices to their transcripts
             transcript_mapping = {}
             for index in sorted(valid_segments.keys(), key=int):
-                seq_index = str(segment_order[str(index)])
-                transcript_mapping[index] = transcripts[seq_index]
+                transcript_mapping[index] = transcripts[str(index)]
             
             # Only process segments that don't have cached captions, maintaining order
             segments_to_process = {idx: name for idx, name in sorted(valid_segments.items(), key=lambda x: int(x[0])) if idx not in captions}
@@ -825,43 +913,14 @@ class VideoRAG:
             del self.video_segments._data[video_name]
             loop.run_until_complete(self.video_segments.index_done_callback())
             
-        # 4. Delete from video_segment_feature_vdb
+        # 4. Delete from video_transcripts
+        if video_name in self.video_transcripts._data:
+            del self.video_transcripts._data[video_name]
+            loop.run_until_complete(self.video_transcripts.index_done_callback())
+            
+        # 5. Delete from video_segment_feature_vdb
         if hasattr(self.video_segment_feature_vdb, 'delete'):
             loop.run_until_complete(self.video_segment_feature_vdb.delete(video_name))
-        
-        # 5. Delete associated chunks and entities
-        # First get all chunk keys associated with this video
-        chunk_keys_to_delete = []
-        for chunk_key in list(self.text_chunks._data.keys()):
-            if chunk_key.startswith(f"{video_name}_"):
-                chunk_keys_to_delete.append(chunk_key)
-                
-        if chunk_keys_to_delete:
-            # Delete from text_chunks
-            for key in chunk_keys_to_delete:
-                del self.text_chunks._data[key]
-            loop.run_until_complete(self.text_chunks.index_done_callback())
-            
-            # Delete from chunks_vdb if enabled
-            if self.enable_naive_rag and hasattr(self.chunks_vdb, 'delete'):
-                loop.run_until_complete(self.chunks_vdb.delete(chunk_keys_to_delete))
-                
-            # Delete from entities_vdb if enabled
-            if self.enable_local:
-                # Get all entity keys associated with these chunks
-                entity_keys_to_delete = []
-                for chunk_key in chunk_keys_to_delete:
-                    if chunk_key in self.chunk_entity_relation_graph._graph:
-                        for entity in self.chunk_entity_relation_graph._graph[chunk_key]:
-                            entity_keys_to_delete.append(entity)
-                
-                if entity_keys_to_delete and hasattr(self.entities_vdb, 'delete'):
-                    loop.run_until_complete(self.entities_vdb.delete(entity_keys_to_delete))
-                    
-                # Remove edges from graph
-                for chunk_key in chunk_keys_to_delete:
-                    if chunk_key in self.chunk_entity_relation_graph._graph:
-                        del self.chunk_entity_relation_graph._graph[chunk_key]
         
         # 6. Save changes
         loop.run_until_complete(self._save_video_segments())
