@@ -71,7 +71,7 @@ class VideoRAG:
     
     # video
     threads_for_split: int = 10
-    video_segment_length: int = 30 # seconds
+    video_segment_length: int = 60 # seconds
     rough_num_frames_per_segment: int = 5 # frames
     fine_num_frames_per_segment: int = 15 # frames
     video_output_format: str = "mp4"
@@ -618,7 +618,7 @@ class VideoRAG:
                             except (IndexError, ValueError):
                                 continue
                     
-                    if expected_segments != saved_video_segments:
+                    if len(expected_segments) != len(saved_video_segments):
                         error_msg = f"Failed to save all video segments. Expected {len(expected_segments)} segments, found {len(saved_video_segments)} segments."
                         error_queue.put(error_msg)
                         raise RuntimeError(error_msg)

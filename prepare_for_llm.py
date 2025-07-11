@@ -11,6 +11,8 @@ def extract_timestamps(text: str) -> List[Tuple[str, float, float]]:
     patterns = [
         r'\[(\d+\.?\d*)s?\s*->\s*(\d+\.?\d*)s?\]',  # [0.00s -> 3.64s]
         r'\((\d+\.?\d*)s?\s*->\s*(\d+\.?\d*)s?\)',  # (0.00s -> 3.64s)
+        r'\[(\d+\.?\d*)s?\s*-\s*(\d+\.?\d*)s?\]',   # [0.00s - 3.64s] or [10.00s - 19.00s]
+        r'\((\d+\.?\d*)s?\s*-\s*(\d+\.?\d*)s?\)',   # (0.00s - 3.64s)
         r'\[(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\]',       # [0.00 - 3.64]
         r'\((\d+\.?\d*)\s*-\s*(\d+\.?\d*)\)'        # (0.00 - 3.64)
     ]
@@ -81,10 +83,12 @@ def process_video_segments(json_path: str, target_video: Optional[str] = None) -
 
 def main():
     parser = argparse.ArgumentParser(description='Process video segments and adjust timestamps.')
+    parser.add_argument('video_name', type=str,
+                      help='Name of the video to process')
     parser.add_argument('--working_dir', type=str, default=os.path.expanduser("~/videos/videorag-workdir"),
                       help='Working directory containing the video segments JSON file')
-    parser.add_argument('--video_name', type=str, default=None,
-                      help='Optional: Process only segments from this video')
+    parser.add_argument('--output_dir', type=str, default="/mnt/omv/shared",
+                      help='Optional: Custom output directory')
     parser.add_argument('--output_file', type=str, default=None,
                       help='Optional: Custom output file name (default: combined_video_content.txt)')
     
@@ -97,12 +101,9 @@ def main():
     
     # Set default output filename if not provided
     if args.output_file is None:
-        if args.video_name:
-            args.output_file = f"combined_video_content_{args.video_name}.txt"
-        else:
-            args.output_file = "combined_video_content.txt"
+        args.output_file = f"combined_video_content_{args.video_name}.txt"
     
-    output_path = os.path.join(args.working_dir, args.output_file)
+    output_path = os.path.join(args.output_dir, args.output_file)
     
     # Process the segments
     combined_content = process_video_segments(json_path, args.video_name)

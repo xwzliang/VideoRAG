@@ -111,7 +111,7 @@ async def segment_caption(video_name, video_path, segment_index2name, transcript
                     "video_path": segment_path,
                     "transcript": segment_transcript,
                     "query": PROMPTS["video_caption"],
-                    "fps": 3.0  # Adjust based on your needs
+                    "fps": 1.0  # Adjust based on your needs
                 }
                 
                 # Make request to Qwen-VL API

@@ -5,3 +5,4 @@ videorag/__pycache__/
 *.pth
 videorag-workdir/
 *.txt
+*.mp4

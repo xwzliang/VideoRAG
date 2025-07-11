@@ -34,14 +34,14 @@ if __name__ == '__main__':
     # Please enter your video file path in this list; there is no limit on the length.
     # Here is an example; you can use your own videos instead.
     video_paths = [
-        '~/videos/Batman_Begins_2005_BluRay_1080p_x265_10bit_2Audio_MNHD-FRDS.mkv',
+        # '~/videos/Batman_Begins_2005_BluRay_1080p_x265_10bit_2Audio_MNHD-FRDS.mkv',
     ]
     video_paths = [
         os.path.expanduser(p) for p in video_paths
     ]
 
     files = [
-        # "The.Dark.Knight.2008.BluRay.1080p.x265.10bit.2Audio.MNHD-FRDS.mkv",
+        "The.Dark.Knight.2008.BluRay.1080p.x265.10bit.2Audio.MNHD-FRDS.mkv",
     ]
     
     for file in files:
